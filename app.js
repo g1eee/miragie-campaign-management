@@ -113,6 +113,11 @@ const PATHS = {
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   cloud: '<path d="M7 18a4 4 0 0 1-.3-8A5.5 5.5 0 0 1 17 9.5a3.5 3.5 0 0 1-.5 8.5H7z"/>',
   cloudCheck: '<path d="M7 18a4 4 0 0 1-.3-8A5.5 5.5 0 0 1 17 9.5a3.5 3.5 0 0 1-.5 8.5"/><path d="M9 14l2 2 4-4"/>',
+  cursor: '<path d="M5 3l7 17 2.2-7.2L21 10.5z"/>',
+  refresh: '<path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v5h-5"/>',
+  target: '<circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>',
+  zoomIn: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/>',
+  zoomOut: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/>',
 };
 
 function ico(name, size = 16) {
@@ -211,6 +216,9 @@ const ui = {
   home: false,           // workspace home view
   homeTab: "content",    // recents | content | collaborators | permissions
   wfSel: null,           // selected workflow node id ("trigger" | stepId)
+  wfPanel: null,         // "history" | null
+  wfTab: "history",      // history | analytics
+  wfZoom: 1,
 };
 
 let cloudTimer = null;
@@ -310,12 +318,32 @@ function migrate() {
     if (!b.createdAt) b.createdAt = Date.now();
     if (!b.creator) b.creator = state.user || "u1";
     if (!b.icon) b.icon = "table";
-    if (b.kind === "workflow" && !b.flow) b.flow = { active: false, trigger: null, steps: [] };
+    if (b.kind === "workflow") {
+      if (!b.flow) b.flow = { active: false, trigger: null, steps: [], runs: [] };
+      if (!Array.isArray(b.flow.steps)) b.flow.steps = [];
+      if (!Array.isArray(b.flow.runs)) b.flow.runs = [];
+      // convert legacy rules model
+      if (!b.flow.trigger && Array.isArray(b.rules) && b.rules.length) {
+        const r = b.rules[0];
+        b.flow.trigger = r.trigger.type === "status"
+          ? { type: "status_changes", config: { statusValue: r.trigger.value } }
+          : { type: "item_created", config: {} };
+        const a = r.action || {};
+        const step = a.type === "setStatus" ? { kind: "action", type: "change_status", config: { value: a.value } }
+          : a.type === "setPriority" ? { kind: "action", type: "set_priority", config: { value: a.value } }
+          : { kind: "action", type: "notify", config: {} };
+        step.id = uid();
+        b.flow.steps.push(step);
+        b.flow.active = !!r.active;
+        delete b.rules;
+      }
+    }
     for (const g of b.groups || []) for (const t of g.tasks) {
       if (!t.cells) t.cells = {};
       if (!Array.isArray(t.files)) t.files = [];
     }
   }
+  if (!state.wfFired) state.wfFired = {};
   if (!Array.isArray(state.workflows)) state.workflows = [];
 }
 
@@ -463,6 +491,8 @@ function locateTask(taskId) {
 function touch(task) {
   task.updatedAt = Date.now();
   task.updatedBy = state.user;
+  // "item updated" trigger — skip the burst right after creation
+  if (Date.now() - (task.createdAt || 0) > 1500) runWorkflows({ type: "updated", task });
 }
 
 /* ---------------- Dropdown manager ---------------- */
@@ -707,8 +737,10 @@ function duplicateTasks(ids) {
     copy.id = uid();
     copy.name = loc.task.name + " (copy)";
     copy.updates = copy.updates.map(u => ({ ...u, id: uid() }));
+    copy.createdAt = Date.now();
     touch(copy);
     loc.group.tasks.splice(loc.idx + 1, 0, copy);
+    runWorkflows({ type: "created", task: copy });
     n++;
   }
   ui.sel.clear();
@@ -804,7 +836,7 @@ function addBoard(opts = {}) {
     widgets: [],
     columns: [],
     chartConfig: { chartType: "donut", metric: "status" },
-    rules: opts.kind === "workflow" ? [] : undefined,
+    flow: opts.kind === "workflow" ? { active: false, trigger: null, steps: [], runs: [] } : undefined,
     creator: state.user,
     createdAt: Date.now(),
     groups: [
@@ -954,6 +986,7 @@ function resetBoardUi() {
   ui.search = "";
   ui.cal = null;
   ui.wfSel = null;
+  ui.wfPanel = null;
   const gs = q("#global-search");
   if (gs) gs.value = "";
 }
@@ -3176,25 +3209,31 @@ function ensureFlow(board) { if (!board.flow) board.flow = { active: false, trig
 
 let wfRunning = false;
 
+// ctx.type: "created" | "status" | "cell" | "updated"
 function runWorkflows(ctx) {
-  if (wfRunning) return;
+  if (wfRunning || !state) return;
   const loc = ctx.task ? locateTask(ctx.task.id) : null;
   const srcBoard = loc ? loc.board : null;
-  const wfBoards = state.boards.filter(b => b.kind === "workflow" && b.workspaceId === state.activeWorkspace && b.flow && b.flow.active && b.flow.trigger);
+  const wfBoards = state.boards.filter(b => b.kind === "workflow" && b.flow && b.flow.active && b.flow.trigger);
   if (!wfBoards.length) return;
-  const events = ctx.type === "created" ? ["item_created"] : ctx.type === "status" ? ["status_changes", "item_updated"] : ["column_changes", "item_updated"];
+  const event = ctx.type === "created" ? "item_created" : ctx.type === "status" ? "status_changes" : ctx.type === "cell" ? "column_changes" : "item_updated";
   wfRunning = true;
+  let fired = false;
   try {
     for (const wb of wfBoards) {
       const tr = wb.flow.trigger;
       const cfg = tr.config || {};
-      if (cfg.boardId && srcBoard && cfg.boardId !== srcBoard.id) continue;
-      if (!events.includes(tr.type)) continue;
+      if (tr.type !== event) continue;
+      // board scope: explicit boardId wins; otherwise any board in the workflow's workspace
+      if (cfg.boardId) { if (!srcBoard || cfg.boardId !== srcBoard.id) continue; }
+      else if (srcBoard && srcBoard.workspaceId !== wb.workspaceId) continue;
       if (tr.type === "status_changes" && cfg.statusValue && cfg.statusValue !== "any" && ctx.task.status !== cfg.statusValue) continue;
       if (tr.type === "column_changes" && cfg.colId && ctx.col && cfg.colId !== ctx.col.id) continue;
-      runFlowSteps(wb, ctx.task);
+      runFlowStepsLogged(wb, ctx.task);
+      fired = true;
     }
   } finally { wfRunning = false; }
+  if (fired) saveLocal();
 }
 
 function evalCondition(step, task) {
@@ -3203,27 +3242,107 @@ function evalCondition(step, task) {
   return task.status === c.value;
 }
 
-function runFlowSteps(wb, task) {
+function runFlowStepsLogged(wb, task) {
+  const results = [];
+  let stopped = false;
   for (const step of wb.flow.steps) {
-    if (step.kind === "condition") { if (!evalCondition(step, task)) return; }
-    else if (step.kind === "wait") { /* time-based: no-op in a static app */ }
-    else if (step.kind === "action") applyFlowAction(step, task);
+    if (step.kind === "condition") {
+      if (!evalCondition(step, task)) { results.push("Condition not met — stopped"); stopped = true; break; }
+      results.push("Condition passed");
+    } else if (step.kind === "wait") {
+      results.push(`Waited ${(step.config && step.config.days) || 1} day(s) — instant in demo`);
+    } else if (step.kind === "action") {
+      results.push(applyFlowAction(wb, step, task) || wfActMeta(step.type).label);
+    }
   }
+  wb.flow.runs = wb.flow.runs || [];
+  wb.flow.runs.unshift({ id: uid(), at: Date.now(), trigger: wfTrigMeta(wb.flow.trigger.type).label, task: task ? task.name : "", detail: results.join(" · "), ok: !stopped });
+  if (wb.flow.runs.length > 50) wb.flow.runs.length = 50;
 }
 
-function applyFlowAction(step, task) {
+function applyFlowAction(wb, step, task) {
   const c = step.config || {};
-  if (step.type === "change_status") { task.status = c.value || "done"; touch(task); save(); toast(`⚡ ${task.name}: status → ${statusLabel(task.status)}`); }
-  else if (step.type === "set_priority") { task.priority = c.value || "high"; touch(task); save(); toast(`⚡ ${task.name}: priority → ${prioLabel(task.priority)}`); }
-  else if (step.type === "move_group") {
+  if (step.type === "change_status") {
+    task.status = c.value || "done"; touch(task); save();
+    toast(`⚡ ${task.name}: status → ${statusLabel(task.status)}`);
+    return `Status → ${statusLabel(task.status)}`;
+  }
+  if (step.type === "set_priority") {
+    task.priority = c.value || "high"; touch(task); save();
+    toast(`⚡ ${task.name}: priority → ${prioLabel(task.priority)}`);
+    return `Priority → ${prioLabel(task.priority)}`;
+  }
+  if (step.type === "move_group") {
     const loc = locateTask(task.id);
-    if (loc && c.groupId) { const g = loc.board.groups.find(x => x.id === c.groupId); if (g && g !== loc.group) { loc.group.tasks.splice(loc.idx, 1); g.tasks.push(task); save(); toast(`⚡ ${task.name} → ${g.name}`); } }
+    if (loc && c.groupId) {
+      const g = loc.board.groups.find(x => x.id === c.groupId);
+      if (g && g !== loc.group) { loc.group.tasks.splice(loc.idx, 1); g.tasks.push(task); save(); toast(`⚡ ${task.name} → ${g.name}`); return `Moved to ${g.name}`; }
+    }
+    return "Move skipped";
   }
-  else if (step.type === "notify") toast(`⚡ ${c.message || task.name}`);
-  else if (step.type === "create_item") {
-    const loc = locateTask(task.id); const board = loc ? loc.board : null;
-    if (board) { const g = board.groups.find(x => x.id === c.groupId) || board.groups[0]; if (g) { g.tasks.push(mkTask(c.name || "New item", { by: state.user })); save(); toast(`⚡ Created "${c.name || "New item"}"`); } }
+  if (step.type === "notify") { toast(`⚡ ${c.message || task.name}`); return `Notified: ${c.message || task.name}`; }
+  if (step.type === "create_item") {
+    const board = wfTargetBoard(wb) || (locateTask(task.id) || {}).board;
+    if (board) {
+      const g = board.groups.find(x => x.id === c.groupId) || board.groups[0];
+      if (g) { g.tasks.push(mkTask(c.name || "New item", { by: state.user })); save(); toast(`⚡ Created "${c.name || "New item"}"`); return `Created "${c.name || "New item"}" in ${board.name}`; }
+    }
+    return "Create skipped";
   }
+  return "";
+}
+
+/* ---- date-arrives scheduler (real, in-app) ---- */
+
+function parseTimeStr(s) {
+  const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec((s || "").trim());
+  if (!m) return { h: 9, m: 0 };
+  let hh = Number(m[1]) % 12;
+  if (/pm/i.test(m[3])) hh += 12;
+  return { h: hh, m: Number(m[2]) };
+}
+
+function isoShiftDays(iso, delta) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + delta);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+function checkDateWorkflows() {
+  if (!state || wfRunning) return;
+  const today = todayISO();
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  let fired = false;
+  wfRunning = true;
+  try {
+    for (const wb of state.boards) {
+      if (wb.kind !== "workflow" || !wb.flow || !wb.flow.active || !wb.flow.trigger || wb.flow.trigger.type !== "date_arrives") continue;
+      const cfg = wb.flow.trigger.config || {};
+      const tb = state.boards.find(b => b.id === cfg.boardId);
+      if (!tb) continue;
+      const t0 = parseTimeStr(cfg.time);
+      if (nowMin < t0.h * 60 + t0.m) continue;
+      for (const g of tb.groups) for (const t of g.tasks) {
+        const dateVal = (cfg.dateCol && cfg.dateCol !== "due") ? t.cells[cfg.dateCol] : t.due;
+        if (!dateVal) continue;
+        if (isoShiftDays(dateVal, -(cfg.offset || 0)) !== today) continue;
+        const key = `${wb.id}:${t.id}:${dateVal}`;
+        if (state.wfFired[key]) continue;
+        state.wfFired[key] = Date.now();
+        runFlowStepsLogged(wb, t);
+        fired = true;
+      }
+    }
+  } finally { wfRunning = false; }
+  if (fired) { save(); softRender(); }
+}
+
+let wfSchedTimer = null;
+function startWfScheduler() {
+  checkDateWorkflows();
+  clearInterval(wfSchedTimer);
+  wfSchedTimer = setInterval(checkDateWorkflows, 30000);
 }
 
 /* ---- builder UI ---- */
@@ -3231,54 +3350,86 @@ function applyFlowAction(step, task) {
 function wfNodeMeta(node, isTrigger) {
   if (isTrigger) return wfTrigMeta(node.type);
   if (node.kind === "action") return wfActMeta(node.type);
-  if (node.kind === "condition") return { icon: "filterFunnel", label: "Only continue if…" };
+  if (node.kind === "condition") return { icon: "table", label: `If ${(node.config && node.config.field) || "status"} is something` };
   if (node.kind === "wait") return { icon: "clock", label: "Wait" };
   return { icon: "bolt", label: "Step" };
 }
 
 function wfTargetBoard(board) {
   const id = board.flow.trigger && board.flow.trigger.config && board.flow.trigger.config.boardId;
-  return state.boards.find(b => b.id === id) || wsBoards().find(b => b.kind === "board") || null;
+  return state.boards.find(b => b.id === id) || state.boards.find(b => b.workspaceId === board.workspaceId && b.kind === "board") || null;
 }
 
-function wfSummary(board, id, node, isTrigger) {
+function wfChip(color, label) {
+  return h("span", { class: "wf-chip" }, h("i", { style: `background:${color}` }), label);
+}
+
+function wfConfigured(node, isTrigger) {
   const c = node.config || {};
+  if (isTrigger) return !!c.boardId;
+  if (node.kind === "condition" || node.kind === "wait") return true;
+  if (node.type === "change_status" || node.type === "set_priority") return !!c.value;
+  if (node.type === "move_group") return !!c.groupId;
+  if (node.type === "create_item") return !!c.name;
+  return true; // notify
+}
+
+function wfSubEl(board, node, isTrigger) {
+  const c = node.config || {};
+  if (!wfConfigured(node, isTrigger)) return h("div", { class: "wf-step-sub link" }, "Set up this step");
+  const sub = h("div", { class: "wf-step-sub" });
+  const lbl = (t) => h("span", { class: "muted" }, t);
   const tb = wfTargetBoard(board);
   if (isTrigger) {
     const b = state.boards.find(x => x.id === c.boardId);
-    if (!c.boardId || !b) return "";
-    if (node.type === "status_changes") return `${b.name} · ${c.statusValue && c.statusValue !== "any" ? statusLabel(c.statusValue) : "any status"}`;
-    if (node.type === "date_arrives") return `${b.name} · ${c.offset ? c.offset + " day(s) before" : "on the date"} · ${c.time || "9:00 AM"}`;
-    if (node.type === "column_changes") { const col = (b.columns || []).find(x => x.id === c.colId); return `${b.name} · ${col ? col.name : "any column"}`; }
-    return b.name;
+    if (node.type === "date_arrives") {
+      sub.append(lbl("Date setup:"), h("span", {}, `${c.offset ? `${c.offset} day(s) before` : "Exact date"}, at ${c.time || "9:00 AM"} (UTC+07:00)`));
+    } else if (node.type === "status_changes") {
+      sub.append(lbl("Board:"), h("span", {}, b ? b.name : "?"));
+      if (c.statusValue && c.statusValue !== "any") { const s = STATUSES.find(x => x.id === c.statusValue); if (s) sub.append(lbl("Status:"), wfChip(s.color, s.label)); }
+      else sub.append(lbl("Status:"), h("span", {}, "Any"));
+    } else if (node.type === "column_changes") {
+      const col = b && (b.columns || []).find(x => x.id === c.colId);
+      sub.append(lbl("Board:"), h("span", {}, b ? b.name : "?"), lbl("Column:"), h("span", {}, col ? col.name : "Any"));
+    } else {
+      sub.append(lbl("Board:"), h("span", {}, b ? b.name : "?"));
+    }
+    return sub;
   }
   if (node.kind === "action") {
-    if (node.type === "change_status") return `to ${statusLabel(c.value)}`;
-    if (node.type === "set_priority") return `to ${prioLabel(c.value)}`;
-    if (node.type === "move_group") { const g = tb && tb.groups.find(x => x.id === c.groupId); return g ? `to ${g.name}` : ""; }
-    if (node.type === "notify") return c.message ? `"${c.message}"` : "me";
-    if (node.type === "create_item") return c.name ? `"${c.name}"` : "";
+    if (node.type === "change_status") { const s = STATUSES.find(x => x.id === c.value); sub.append(lbl("Status:"), wfChip(s ? s.color : "#c4c4c4", s ? s.label : "?")); }
+    else if (node.type === "set_priority") { const p = PRIORITIES.find(x => x.id === c.value); sub.append(lbl("Priority:"), wfChip(p ? p.color : "#c4c4c4", p ? p.label : "?")); }
+    else if (node.type === "move_group") { const g = tb && tb.groups.find(x => x.id === c.groupId); sub.append(lbl("Group:"), h("span", {}, g ? g.name : "?")); }
+    else if (node.type === "notify") sub.append(lbl("Message:"), h("span", {}, c.message || "me"));
+    else if (node.type === "create_item") sub.append(lbl("Board:"), h("span", {}, tb ? tb.name : "?"), lbl("Item:"), h("span", {}, `"${c.name}"`));
+    return sub;
   }
-  if (node.kind === "condition") return `${c.field || "status"} is ${c.field === "priority" ? prioLabel(c.value) : statusLabel(c.value)}`;
-  if (node.kind === "wait") return `${c.days || 1} day(s)`;
-  return "";
+  if (node.kind === "condition") {
+    const isPrio = c.field === "priority";
+    const d = isPrio ? PRIORITIES.find(x => x.id === c.value) : STATUSES.find(x => x.id === c.value);
+    sub.append(lbl(isPrio ? "Priority:" : "Status:"), wfChip(d ? d.color : "#c4c4c4", d ? (d.label || "—") : "?"));
+    return sub;
+  }
+  if (node.kind === "wait") { sub.append(lbl("Wait:"), h("span", {}, `${c.days || 1} day(s)`)); return sub; }
+  return sub;
 }
 
 function wfStepCard(board, id, node, num) {
   const isTrigger = id === "trigger";
   const meta = wfNodeMeta(node, isTrigger);
   const card = h("div", { class: "wf-step" + (ui.wfSel === id ? " sel" : "") });
-  card.append(h("span", { class: "wf-step-num" }, String(num)));
+  if (isTrigger) card.append(h("span", { class: "wf-badge trig" }, ico("bolt", 14)));
+  if (node.kind === "condition") card.append(h("span", { class: "wf-badge cond" }, h("span", { class: "wf-badge-in" }, ico("bolt", 12))));
+  if (num != null) card.append(h("span", { class: "wf-step-num" }, String(num)));
   card.append(h("span", { class: "wf-step-ico" + (isTrigger ? " trig" : "") }, ico(meta.icon, 16)));
-  const sum = wfSummary(board, id, node, isTrigger);
   card.append(h("div", { style: "flex:1;min-width:0" },
     h("div", { class: "wf-step-title" }, meta.label),
-    h("div", { class: "wf-step-sub" + (sum ? "" : " link") }, sum || "Set up this step")));
+    wfSubEl(board, node, isTrigger)));
   const menu = h("button", { class: "row-act", title: "Options" });
   menu.append(ico("dots", 15));
   menu.addEventListener("click", (e) => { e.stopPropagation(); wfStepMenu(menu, board, id, node, isTrigger); });
   card.append(menu);
-  card.addEventListener("click", () => { ui.wfSel = id; rerenderViewOnly(board); });
+  card.addEventListener("click", () => { ui.wfSel = id; ui.wfPanel = null; rerenderViewOnly(board); });
   return card;
 }
 
@@ -3318,19 +3469,26 @@ function wfTriggerPicker(anchor, board) {
   }, { minWidth: 320 });
 }
 
-function wfNextPicker(anchor, board) {
+function wfInsertStep(board, step, insertAt) {
+  const at = insertAt == null ? board.flow.steps.length : Math.max(0, Math.min(insertAt, board.flow.steps.length));
+  board.flow.steps.splice(at, 0, step);
+  ui.wfSel = step.id;
+  ui.wfPanel = null;
+  save();
+  rerenderViewOnly(board);
+}
+
+function wfNextPicker(anchor, board, insertAt) {
   openDropdown(anchor, (el, close) => {
     el.append(h("div", { class: "dd-title" }, "What should happen next?"));
-    el.append(ddItem("bolt", "Action", () => { close(); wfActionPicker(anchor, board); }));
+    el.append(ddItem("bolt", "Action", () => { close(); wfActionPicker(anchor, board, insertAt); }));
     el.append(ddItem("filterFunnel", "Condition", () => {
       close();
-      const step = { id: uid(), kind: "condition", config: { field: "status", value: STATUSES[1].id } };
-      board.flow.steps.push(step); ui.wfSel = step.id; save(); rerenderViewOnly(board);
+      wfInsertStep(board, { id: uid(), kind: "condition", config: { field: "status", value: STATUSES[1].id } }, insertAt);
     }));
     el.append(ddItem("clock", "Wait", () => {
       close();
-      const step = { id: uid(), kind: "wait", config: { days: 1 } };
-      board.flow.steps.push(step); ui.wfSel = step.id; save(); rerenderViewOnly(board);
+      wfInsertStep(board, { id: uid(), kind: "wait", config: { days: 1 } }, insertAt);
     }));
     const ag = ddItem("vibe", "Agents", () => { close(); toast("Agents — coming soon in demo"); }, "soon");
     ag.append(h("span", { class: "dd-badge" }, "Soon"));
@@ -3338,7 +3496,7 @@ function wfNextPicker(anchor, board) {
   }, { minWidth: 260 });
 }
 
-function wfActionPicker(anchor, board) {
+function wfActionPicker(anchor, board, insertAt) {
   openDropdown(anchor, (el, close) => {
     const si = h("input", { type: "text", placeholder: "What should happen next?" });
     el.append(h("div", { class: "side-search", style: "margin:2px 0 8px" }, ico("search", 14), si));
@@ -3353,8 +3511,7 @@ function wfActionPicker(anchor, board) {
         host.append(ddItem(a.icon, a.label, () => {
           close();
           const def = a.type === "change_status" ? { value: STATUSES[1].id } : a.type === "set_priority" ? { value: PRIORITIES[1].id } : a.type === "create_item" ? { name: "New item" } : {};
-          const step = { id: uid(), kind: "action", type: a.type, config: def };
-          board.flow.steps.push(step); ui.wfSel = step.id; save(); rerenderViewOnly(board);
+          wfInsertStep(board, { id: uid(), kind: "action", type: a.type, config: def }, insertAt);
         }));
       }
     };
@@ -3392,7 +3549,7 @@ function wfSettingsPanel(board) {
   const body = h("div", { class: "wf-panel-body" });
   panel.append(body);
 
-  const boardOpts = wsBoards().filter(b => b.kind === "board").map(b => ({ id: b.id, label: b.name }));
+  const boardOpts = state.boards.filter(b => b.workspaceId === board.workspaceId && b.kind === "board").map(b => ({ id: b.id, label: b.name }));
   const targetBoard = wfTargetBoard(board);
 
   if (isTrigger) {
@@ -3441,10 +3598,40 @@ function wfSettingsPanel(board) {
   return panel;
 }
 
+function wfConnector(board, insertAt) {
+  const wrap = h("div", { class: "wf-connector-wrap" }, h("div", { class: "wf-connector" }));
+  if (insertAt != null) {
+    const plus = h("button", { class: "wf-insert", title: "Insert step here" });
+    plus.append(ico("plus", 13));
+    plus.addEventListener("click", (e) => { e.stopPropagation(); wfNextPicker(plus, board, insertAt); });
+    wrap.append(plus);
+  }
+  return wrap;
+}
+
+function wfZoombar(board) {
+  const bar = h("div", { class: "wf-zoombar" });
+  const mk = (icon, title, fn, active) => {
+    const b = h("button", { class: active ? "active" : "", title });
+    b.append(ico(icon, 15));
+    if (fn) b.addEventListener("click", fn);
+    return b;
+  };
+  bar.append(
+    mk("cursor", "Select", null, true),
+    mk("target", "Reset zoom", () => { ui.wfZoom = 1; rerenderViewOnly(board); }),
+    mk("zoomIn", "Zoom in", () => { ui.wfZoom = Math.min(1.4, Math.round((ui.wfZoom + 0.1) * 10) / 10); rerenderViewOnly(board); }),
+    mk("zoomOut", "Zoom out", () => { ui.wfZoom = Math.max(0.5, Math.round((ui.wfZoom - 0.1) * 10) / 10); rerenderViewOnly(board); }),
+  );
+  return bar;
+}
+
 function workflowViewEl(board) {
   ensureFlow(board);
   const flow = board.flow;
   const root = h("div", { class: "view-root wf-view" });
+  root.append(wfZoombar(board));
+
   const canvas = h("div", { class: "wf-canvas" });
 
   if (!flow.trigger) {
@@ -3452,17 +3639,93 @@ function workflowViewEl(board) {
     trg.addEventListener("click", () => wfTriggerPicker(trg, board));
     canvas.append(trg);
   } else {
-    canvas.append(wfStepCard(board, "trigger", flow.trigger, 1));
+    canvas.append(wfStepCard(board, "trigger", flow.trigger, null));
     let n = 2;
-    for (const step of flow.steps) { canvas.append(h("div", { class: "wf-connector" })); canvas.append(wfStepCard(board, step.id, step, n++)); }
-    canvas.append(h("div", { class: "wf-connector" }));
+    flow.steps.forEach((step, i) => {
+      canvas.append(wfConnector(board, i));
+      canvas.append(wfStepCard(board, step.id, step, n++));
+    });
+    canvas.append(wfConnector(board, null));
     const next = h("div", { class: "wf-next" }, ico("plus", 16), h("span", {}, "What happens next?"));
     next.addEventListener("click", () => wfNextPicker(next, board));
     canvas.append(next);
   }
-  root.append(canvas);
+
+  const scale = h("div", { class: "wf-scale", style: `transform:scale(${ui.wfZoom})` }, canvas);
+  root.append(scale);
   if (ui.wfSel) root.append(wfSettingsPanel(board));
+  else if (ui.wfPanel === "history") root.append(wfRunsPanel(board));
   return root;
+}
+
+/* ---- run history / analytics panel ---- */
+
+function wfRunsPanel(board) {
+  const runs = board.flow.runs || [];
+  const panel = h("div", { class: "wf-runs" });
+
+  const head = h("div", { class: "wf-runs-head" });
+  for (const [id, label] of [["history", "Run history"], ["analytics", "Analytics"]]) {
+    head.append(h("button", { class: "wf-rtab" + (ui.wfTab === id ? " active" : ""), onclick: () => { ui.wfTab = id; rerenderViewOnly(board); } }, label));
+  }
+  head.append(h("div", { style: "flex:1" }));
+  const refresh = h("button", { class: "icon-btn", title: "Refresh", onclick: () => { rerenderViewOnly(board); toast("Refreshed"); } });
+  refresh.append(ico("refresh", 15));
+  const closeB = h("button", { class: "icon-btn", onclick: () => { ui.wfPanel = null; rerenderViewOnly(board); } });
+  closeB.append(ico("x", 15));
+  head.append(refresh, closeB);
+  panel.append(head);
+
+  if (ui.wfTab === "analytics") {
+    const ok = runs.filter(r => r.ok).length;
+    const today = todayISO();
+    const todayRuns = runs.filter(r => tsToIso(r.at) === today).length;
+    const stat = (num, label) => h("div", { class: "wf-stat" }, h("div", { class: "wf-stat-num" }, String(num)), h("div", { class: "muted", style: "font-size:12px" }, label));
+    panel.append(h("div", { class: "wf-stats" },
+      stat(runs.length, "Total runs"),
+      stat(ok, "Successful"),
+      stat(todayRuns, "Runs today"),
+      stat(runs.length ? relTime(runs[0].at) : "—", "Last run")));
+    return panel;
+  }
+
+  const toolbar = h("div", { class: "wf-runs-toolbar" });
+  const filt = h("button", { class: "tb-btn connect", onclick: () => toast("Filters — coming soon in demo") });
+  filt.append(ico("filterFunnel", 14), h("span", {}, "Filters"));
+  const hub = h("button", { class: "tb-btn", onclick: () => toast("Autopilot hub — coming soon in demo") });
+  hub.append(ico("agent", 14), h("span", {}, "Autopilot hub"));
+  toolbar.append(filt, h("div", { style: "flex:1" }), hub);
+  panel.append(toolbar);
+
+  const body = h("div", { class: "wf-runs-body" });
+  if (!runs.length) {
+    const empty = h("div", { class: "wf-empty" });
+    const art = h("div", {});
+    art.innerHTML = `<svg width="190" height="140" viewBox="0 0 190 140" fill="none">
+      <text x="128" y="26" font-size="18" font-weight="800" style="fill:var(--text-2)">Z</text>
+      <text x="142" y="16" font-size="13" font-weight="800" style="fill:var(--border-2)">z</text>
+      <text x="118" y="13" font-size="10" font-weight="800" style="fill:var(--border-2)">z</text>
+      <ellipse cx="95" cy="112" rx="62" ry="8" style="fill:var(--surface-2)"/>
+      <ellipse cx="95" cy="86" rx="62" ry="22" style="stroke:var(--border-2)" fill="none" stroke-dasharray="5 6"/>
+      <line x1="95" y1="32" x2="95" y2="42" stroke="#7b86f4" stroke-width="3"/><circle cx="95" cy="29" r="4.5" fill="#7b86f4"/>
+      <rect x="63" y="42" width="64" height="50" rx="11" fill="#7b86f4"/>
+      <path d="M78 62q4.5 5 9 0M103 62q4.5 5 9 0" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+      <rect x="70" y="92" width="50" height="28" rx="5" style="fill:var(--bg);stroke:var(--border-2)"/>
+      <path d="M77 100h36M77 107h28M77 114h32" style="stroke:var(--border-2)" stroke-width="2" stroke-linecap="round"/></svg>`;
+    empty.append(art,
+      h("div", { style: "font-size:18px;font-weight:800;margin-top:6px" }, "No workflow runs yet"),
+      h("div", { class: "muted" }, "Once this workflow starts running, you'll see its history here."));
+    body.append(empty);
+  } else {
+    for (const r of runs) {
+      body.append(h("div", { class: "run-card" + (r.ok ? "" : " stopped") },
+        h("div", { style: "display:flex;align-items:center;gap:8px" }, ico("bolt", 14), h("b", { style: "flex:1;font-size:13px" }, r.trigger), h("span", { class: "muted", style: "font-size:11px" }, relTime(r.at))),
+        r.task ? h("div", { class: "muted", style: "font-size:12px;margin-top:4px" }, "Item: " + r.task) : null,
+        h("div", { style: "font-size:12px;margin-top:4px" }, r.detail || "")));
+    }
+  }
+  panel.append(body);
+  return panel;
 }
 
 function workflowHeadEl(board) {
@@ -3478,13 +3741,26 @@ function workflowHeadEl(board) {
   toggle.addEventListener("click", () => {
     if (!canPublish) { toast("Add a trigger and at least one action first"); return; }
     board.flow.active = !board.flow.active; save(); render();
-    toast(board.flow.active ? "Workflow activated" : "Workflow paused");
+    toast(board.flow.active ? "Workflow activated 🎉" : "Workflow paused");
   });
 
-  return h("div", { class: "board-head" },
+  const histBtn = h("button", { class: "tb-btn" + (ui.wfPanel === "history" ? " active" : "") });
+  histBtn.append(ico("list", 15), h("span", {}, "Run history"));
+  if ((board.flow.runs || []).length) histBtn.append(h("span", { class: "count-badge" }, board.flow.runs.length));
+  histBtn.addEventListener("click", () => {
+    ui.wfPanel = ui.wfPanel === "history" ? null : "history";
+    ui.wfSel = null;
+    renderMain();
+  });
+
+  const editBtn = h("button", { class: "tb-btn" });
+  editBtn.append(ico("pencil", 15), h("span", {}, "Edit workflow"));
+  editBtn.addEventListener("click", () => { ui.wfPanel = null; ui.wfSel = null; renderMain(); });
+
+  return h("div", { class: "board-head", style: "padding-bottom:12px" },
     h("div", { class: "bh-top" }, h("span", { class: "ws-dd-logo", style: "background:#5559df" }, ico("workflow", 16)), title,
-      h("span", { class: "muted", style: "font-size:13px;margin-left:8px" }, board.flow.active ? "Active" : "Inactive"), toggle,
-      h("div", { class: "bh-spacer" }), menuBtn));
+      toggle, h("span", { class: "muted", style: "font-size:13px" }, board.flow.active ? "Active" : "Inactive"),
+      h("div", { class: "bh-spacer" }), histBtn, editBtn, menuBtn));
 }
 
 /* ---------------- Render: bulk bar ---------------- */
@@ -3833,3 +4109,4 @@ load();
 wireTopbar();
 render();
 initCloud();
+startWfScheduler();
