@@ -111,6 +111,8 @@ const PATHS = {
   link: '<path d="M9 15l6-6M10.5 6.5l1-1a3.5 3.5 0 0 1 5 5l-1 1M13.5 17.5l-1 1a3.5 3.5 0 0 1-5-5l1-1"/>',
   bolt: '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  cloud: '<path d="M7 18a4 4 0 0 1-.3-8A5.5 5.5 0 0 1 17 9.5a3.5 3.5 0 0 1-.5 8.5H7z"/>',
+  cloudCheck: '<path d="M7 18a4 4 0 0 1-.3-8A5.5 5.5 0 0 1 17 9.5a3.5 3.5 0 0 1-.5 8.5"/><path d="M9 14l2 2 4-4"/>',
 };
 
 function ico(name, size = 16) {
@@ -210,8 +212,61 @@ const ui = {
   homeTab: "content",    // recents | content | collaborators | permissions
 };
 
+let cloudTimer = null;
+function saveLocal() { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
 function save() {
-  localStorage.setItem(LS_KEY, JSON.stringify(state));
+  saveLocal();
+  if (typeof window !== "undefined" && window.CLOUD && window.CLOUD.available() && window.CLOUD.user()) {
+    clearTimeout(cloudTimer);
+    cloudTimer = setTimeout(() => window.CLOUD.save(state), 800);
+  }
+}
+
+function cloudOn() { return typeof window !== "undefined" && window.CLOUD && window.CLOUD.available(); }
+
+function initCloud() {
+  if (!cloudOn()) return;
+  window.CLOUD.init(async (u) => {
+    if (u) {
+      const remote = await window.CLOUD.load();
+      if (remote && Array.isArray(remote.boards)) { state = remote; migrate(); saveLocal(); render(); toast("☁ Cloud data loaded"); return; }
+      window.CLOUD.save(state); // first sign-in on this account: push local up
+      toast("☁ Synced to cloud");
+    }
+    render();
+  });
+}
+
+function cloudAuthModal() {
+  openModal((card, close) => {
+    const closeBtn = h("button", { class: "icon-btn", onclick: close });
+    closeBtn.append(ico("x", 16));
+    card.append(h("div", { class: "modal-head" }, h("div", { class: "ip-title", style: "flex:1" }, "Cloud sync"), closeBtn));
+    const body = h("div", { class: "modal-body" });
+    body.append(h("p", { class: "muted", style: "margin-bottom:14px" }, "Sign in (or create an account) to back up your workspaces to the cloud and sync across devices."));
+    const email = h("input", { type: "email", class: "lbl-input", placeholder: "you@email.com", style: "width:100%;height:38px;margin-bottom:10px" });
+    const pw = h("input", { type: "password", class: "lbl-input", placeholder: "Password (min 6 chars)", style: "width:100%;height:38px" });
+    const msg = h("div", { class: "muted", style: "min-height:18px;margin-top:10px;font-size:12px" });
+    body.append(email, pw, msg);
+    card.append(body);
+    const signIn = h("button", { class: "btn-primary" }, "Sign in");
+    const signUp = h("button", { class: "modal-cancel" }, "Create account");
+    const run = async (fn) => {
+      const e = email.value.trim(), p = pw.value;
+      if (!e || p.length < 6) { msg.textContent = "Enter an email and a password of at least 6 characters."; return; }
+      msg.textContent = "Working…";
+      const r = await fn(e, p);
+      if (r.error) { msg.textContent = r.error; return; }
+      if (r.needsConfirm) { msg.textContent = "Account created — confirm via the email we sent, then sign in."; return; }
+      close();
+      toast("☁ Signed in — syncing to cloud");
+    };
+    signIn.addEventListener("click", () => run((e, p) => window.CLOUD.signIn(e, p)));
+    signUp.addEventListener("click", () => run((e, p) => window.CLOUD.signUp(e, p)));
+    pw.addEventListener("keydown", (ev) => { if (ev.key === "Enter") signIn.click(); });
+    card.append(h("div", { class: "modal-foot" }, signUp, signIn));
+    setTimeout(() => email.focus(), 0);
+  });
 }
 
 function load() {
@@ -3446,6 +3501,19 @@ function profileMenu(anchor) {
     el.append(ddItem(state.theme === "light" ? "moon" : "sun", state.theme === "light" ? "Dark mode" : "Light mode", () => {
       state.theme = state.theme === "light" ? "dark" : "light"; save(); close(); render();
     }));
+
+    el.append(h("hr", { class: "dd-sep" }));
+    if (cloudOn()) {
+      if (window.CLOUD.user()) {
+        el.append(h("div", { class: "dd-item disabled" }, ico("cloudCheck", 15), h("span", {}, "Synced: " + (window.CLOUD.email() || "cloud"))));
+        el.append(ddItem("x", "Sign out of sync", async () => { close(); await window.CLOUD.signOut(); toast("Signed out — local only now"); render(); }));
+      } else {
+        el.append(ddItem("cloud", "Sign in to sync (cloud)", () => { close(); cloudAuthModal(); }));
+      }
+    } else {
+      el.append(h("div", { class: "dd-item disabled" }, ico("cloud", 15), h("span", {}, "Cloud sync offline")));
+    }
+
     el.append(ddItem("trash", "Reset demo data", () => {
       close();
       localStorage.removeItem(LS_KEY);
@@ -3489,3 +3557,4 @@ function wireTopbar() {
 load();
 wireTopbar();
 render();
+initCloud();
