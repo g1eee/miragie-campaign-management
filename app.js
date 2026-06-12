@@ -38,6 +38,20 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const MONTHS_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+const VIEW_META = [
+  { id: "table",     label: "Table",        tabLabel: "Main table", icon: "table" },
+  { id: "gantt",     label: "Gantt",        icon: "gantt" },
+  { id: "chart",     label: "Chart",        icon: "chart" },
+  { id: "calendar",  label: "Calendar",     icon: "calendar" },
+  { id: "kanban",    label: "Kanban",       icon: "kanban" },
+  { id: "doc",       label: "Doc",          icon: "doc" },
+  { id: "gallery",   label: "File gallery", icon: "gallery" },
+  { id: "form",      label: "Form",         icon: "form" },
+  { id: "dashboard", label: "Dashboard",    icon: "dashboard" },
+];
+const viewMeta = (id) => VIEW_META.find(v => v.id === id) || VIEW_META[0];
+const viewTab = (id) => { const v = viewMeta(id); return v.tabLabel || v.label; };
+
 /* ---------------- Icons (inline SVG) ---------------- */
 
 const PATHS = {
@@ -73,6 +87,21 @@ const PATHS = {
   expand: '<path d="M13 6l6 6-6 6M5 6l6 6-6 6"/>',
   arrowUp: '<path d="M12 19V5M5 12l7-7 7 7"/>',
   arrowDown: '<path d="M12 5v14M5 12l7 7 7-7"/>',
+  gantt: '<path d="M5 6h9M5 12h6M5 18h12" stroke-width="2.4"/>',
+  chart: '<path d="M4 20V11M10 20V5M16 20v-7M4 20h16"/>',
+  dashboard: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/><rect x="3" y="14" width="8" height="7" rx="1.5"/>',
+  doc: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 13h6M9 17h4"/>',
+  form: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h4"/>',
+  gallery: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5L6 21"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  agent: '<rect x="5" y="8" width="14" height="11" rx="2"/><path d="M12 4v4M8.5 13h.01M15.5 13h.01M9 17h6"/>',
+  vibe: '<path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15l-1.8-4.2L5.5 9l4.7-1.3z"/>',
+  workflow: '<rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="15" width="6" height="5" rx="1"/><path d="M6 9v3.5a2 2 0 0 0 2 2h7"/>',
+  camera: '<path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.3"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.6 7.6 0 0 0 0-2l1.9-1.4-1.9-3.3-2.2 1a7.6 7.6 0 0 0-1.8-1L15 3H9.9l-.4 2.3a7.6 7.6 0 0 0-1.8 1l-2.2-1L3.6 8.6 5.5 10a7.6 7.6 0 0 0 0 2l-1.9 1.4 1.9 3.3 2.2-1a7.6 7.6 0 0 0 1.8 1l.4 2.3h5.1l.4-2.3a7.6 7.6 0 0 0 1.8-1l2.2 1 1.9-3.3z"/>',
+  template: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
+  apps: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  filterFunnel: '<path d="M4 5h16l-6.5 7.5V19l-3-1.5v-5L4 5z"/>',
 };
 
 function ico(name, size = 16) {
@@ -168,6 +197,8 @@ const ui = {
   sideCollapsed: false,
   sideSearch: "",
   drag: null,            // {type:'task'|'card'|'chip', taskId}
+  home: false,           // workspace home view
+  homeTab: "content",    // recents | content | collaborators | permissions
 };
 
 function save() {
@@ -175,12 +206,29 @@ function save() {
 }
 
 function load() {
+  let parsed = null;
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (raw) { state = JSON.parse(raw); return; }
+    if (raw) parsed = JSON.parse(raw);
   } catch (e) { /* corrupted -> reseed */ }
-  state = seed();
+  state = parsed || seed();
+  migrate();
   save();
+}
+
+// Backfill fields added in later versions so old localStorage keeps working.
+function migrate() {
+  if (!state.workspace) state.workspace = { name: "Main workspace", desc: "" };
+  for (const p of state.people) if (!("avatar" in p)) p.avatar = null;
+  for (const b of state.boards) {
+    if (!Array.isArray(b.views)) b.views = ["table", "kanban", "calendar"];
+    if (!b.view || !b.views.includes(b.view)) b.view = b.views[0] || "table";
+    if (!b.hidden) b.hidden = [];
+    if (b.doc == null) b.doc = "";
+    if (!b.createdAt) b.createdAt = Date.now();
+    if (!b.creator) b.creator = state.user || "u1";
+    if (!b.icon) b.icon = "table";
+  }
 }
 
 function mkTask(name, opts = {}) {
@@ -205,7 +253,12 @@ function seed() {
     name: "Campaign Tracker",
     desc: "Manage any type of campaign. Assign owners, set timelines and keep track of where your campaign stands.",
     view: "table",
+    views: ["table", "calendar", "kanban"],
+    icon: "table",
     hidden: [],
+    doc: "",
+    creator: "u1",
+    createdAt: Date.now(),
     groups: [
       {
         id: uid(), name: "To-Do", color: "#579bfc", collapsed: false,
@@ -223,7 +276,12 @@ function seed() {
     name: "Dashboard and reporting",
     desc: "Track KPIs, reports and analytics tasks for all running campaigns.",
     view: "table",
+    views: ["table", "dashboard", "chart"],
+    icon: "dashboard",
     hidden: [],
+    doc: "",
+    creator: "u1",
+    createdAt: Date.now(),
     groups: [
       {
         id: uid(), name: "This week", color: "#a25ddc", collapsed: false,
@@ -242,11 +300,12 @@ function seed() {
   return {
     theme: "light",
     user: "u1",
+    workspace: { name: "Main workspace", desc: "" },
     people: [
-      { id: "u1", name: "Gie", color: "#0073ea" },
-      { id: "u2", name: "Andi Pratama", color: "#a25ddc" },
-      { id: "u3", name: "Sari Dewi", color: "#00c875" },
-      { id: "u4", name: "Budi Santoso", color: "#fdab3d" },
+      { id: "u1", name: "Gie", color: "#0073ea", avatar: null },
+      { id: "u2", name: "Andi Pratama", color: "#a25ddc", avatar: null },
+      { id: "u3", name: "Sari Dewi", color: "#00c875", avatar: null },
+      { id: "u4", name: "Budi Santoso", color: "#fdab3d", avatar: null },
     ],
     activeBoard: b1.id,
     boards: [b1, b2],
@@ -453,20 +512,27 @@ function deleteGroup(board, group) {
   });
 }
 
-function addBoard() {
+function addBoard(opts = {}) {
+  const views = opts.views || ["table", "kanban", "calendar"];
   const b = {
     id: uid(),
-    name: "New Board",
-    desc: "Click to add a description for this board.",
-    view: "table",
+    name: opts.name || "New Board",
+    desc: opts.desc || "Click to add a description for this board.",
+    view: opts.view || views[0],
+    views,
+    icon: opts.icon || "table",
     hidden: [],
+    doc: "",
+    creator: state.user,
+    createdAt: Date.now(),
     groups: [
       { id: uid(), name: "Group 1", color: "#579bfc", collapsed: false, tasks: [] },
     ],
   };
   state.boards.push(b);
   switchBoard(b.id);
-  toast("Board created");
+  toast(opts.toast || "Board created");
+  return b;
 }
 
 function regenIds(board) {
@@ -507,8 +573,16 @@ function deleteBoard(board) {
 
 function switchBoard(id) {
   state.activeBoard = id;
+  ui.home = false;
   resetBoardUi();
   save();
+  render();
+}
+
+function openHome() {
+  ui.home = true;
+  ui.panel = null;
+  ui.sel.clear();
   render();
 }
 
@@ -599,8 +673,11 @@ function renderTopbar() {
 
 function avatarEl(person, size = 26) {
   if (!person) return h("span", { class: "avatar-empty" }, ico("person", 14));
-  const a = h("span", { class: "avatar", title: person.name, style: `background:${person.color};width:${size}px;height:${size}px;font-size:${Math.round(size * 0.4)}px` }, initials(person.name));
-  return a;
+  if (person.avatar) {
+    return h("span", { class: "avatar has-photo", title: person.name, style: `width:${size}px;height:${size}px` },
+      h("img", { src: person.avatar, alt: person.name }));
+  }
+  return h("span", { class: "avatar", title: person.name, style: `background:${person.color};width:${size}px;height:${size}px;font-size:${Math.round(size * 0.4)}px` }, initials(person.name));
 }
 
 /* ---------------- Render: sidebar ---------------- */
@@ -613,21 +690,43 @@ function renderSidebar() {
   const collapseBtn = h("button", { class: "icon-btn", title: ui.sideCollapsed ? "Expand" : "Collapse", onclick: () => { ui.sideCollapsed = !ui.sideCollapsed; renderSidebar(); } });
   collapseBtn.append(ico(ui.sideCollapsed ? "expand" : "collapse", 15));
 
-  const wsChip = h("div", { class: "ws-chip" }, h("span", { class: "ws-logo" }, "M"), h("span", {}, "Main workspace"));
-  sb.append(h("div", { class: "side-row" }, wsChip, collapseBtn));
+  const wsChip = h("div", { class: "ws-chip", title: "Open workspace home", onclick: () => openHome() },
+    h("span", { class: "ws-logo" }, "M"), h("span", {}, state.workspace.name));
 
-  if (!ui.sideCollapsed) {
-    const search = h("input", { type: "text", placeholder: "Search boards", value: ui.sideSearch });
-    search.addEventListener("input", () => {
-      ui.sideSearch = search.value;
-      renderBoardList(q("#board-list"));
-    });
-    sb.append(h("div", { class: "side-search" }, ico("search", 14), search));
+  const addNewBtn = h("button", { class: "ws-add", title: "Add new" });
+  addNewBtn.append(ico("plus", 16));
+  addNewBtn.addEventListener("click", (e) => { e.stopPropagation(); addNewMenu(addNewBtn); });
 
-    const addBtn = h("button", { title: "Add board", onclick: () => addBoard() });
-    addBtn.append(ico("plus", 15));
-    sb.append(h("div", { class: "side-section" }, h("span", {}, "Boards"), addBtn));
+  sb.append(h("div", { class: "side-row" }, wsChip, ui.sideCollapsed ? null : addNewBtn, collapseBtn));
+
+  if (ui.sideCollapsed) {
+    const list = h("div", { id: "board-list" });
+    sb.append(list);
+    renderBoardList(list);
+    return;
   }
+
+  const search = h("input", { type: "text", placeholder: "Search boards", value: ui.sideSearch });
+  search.addEventListener("input", () => {
+    ui.sideSearch = search.value;
+    renderBoardList(q("#board-list"));
+  });
+  sb.append(h("div", { class: "side-search" }, ico("search", 14), search));
+
+  const agentsRow = h("div", { class: "side-static", onclick: () => toast("Workspace agents — coming soon in demo") },
+    h("span", {}, "My workspace agents"), ico("chevRight", 14));
+  sb.append(agentsRow);
+
+  const addBtn = h("button", { title: "Add new", onclick: (e) => { e.stopPropagation(); addNewMenu(addBtn); } });
+  addBtn.append(ico("plus", 15));
+  sb.append(h("div", { class: "side-section" }, h("span", {}, "Content"), addBtn));
+
+  const homeItem = h("div", {
+    class: "side-item" + (ui.home ? " active" : ""),
+    title: "Workspace home",
+    onclick: () => openHome(),
+  }, ico("home", 15), h("span", { class: "side-label" }, "Workspace home"));
+  sb.append(homeItem);
 
   const list = h("div", { id: "board-list" });
   sb.append(list);
@@ -646,12 +745,46 @@ function renderBoardList(list) {
       boardMenu(menuBtn, b);
     });
     const item = h("div", {
-      class: "side-item" + (b.id === state.activeBoard ? " active" : ""),
+      class: "side-item" + (!ui.home && b.id === state.activeBoard ? " active" : ""),
       title: b.name,
-      onclick: () => { if (b.id !== state.activeBoard) switchBoard(b.id); },
-    }, ico("table", 15), h("span", { class: "side-label" }, b.name), menuBtn);
+      onclick: () => { if (ui.home || b.id !== state.activeBoard) switchBoard(b.id); },
+    }, ico(b.icon || "table", 15), h("span", { class: "side-label" }, b.name), menuBtn);
     list.append(item);
   }
+}
+
+/* ---------------- Add-new menu (sidebar +) ---------------- */
+
+function addNewMenu(anchor) {
+  openDropdown(anchor, (el, close) => {
+    el.append(h("div", { class: "dd-title" }, "Add new"));
+    el.append(ddItem("table", "Board", () => { close(); addBoard({ name: "New Board" }); }));
+    el.append(ddItem("dashboard", "Dashboard", () => {
+      close();
+      addBoard({ name: "New Dashboard", icon: "dashboard", view: "dashboard", views: ["table", "dashboard", "chart"], toast: "Dashboard created" });
+    }));
+    el.append(ddItem("doc", "Doc", () => {
+      close();
+      addBoard({ name: "New Doc", icon: "doc", view: "doc", views: ["doc", "table"], desc: "A simple doc for notes.", toast: "Doc created" });
+    }));
+    el.append(ddItem("form", "Form", () => {
+      close();
+      addBoard({ name: "New Form", icon: "form", view: "form", views: ["form", "table"], desc: "Collect items through a form.", toast: "Form created" });
+    }));
+    el.append(h("hr", { class: "dd-sep" }));
+    const soon = [
+      ["agent", "Agent"],
+      ["vibe", "Vibe app"],
+      ["workflow", "Workflow"],
+      ["folder", "Folder"],
+      ["template", "Template center"],
+    ];
+    for (const [icon, label] of soon) {
+      const it = ddItem(icon, label, () => { close(); toast(`${label} — coming soon in demo`); }, "soon");
+      it.append(h("span", { class: "dd-badge" }, "Soon"));
+      el.append(it);
+    }
+  }, { minWidth: 230 });
 }
 
 function boardMenu(anchor, board) {
@@ -682,15 +815,31 @@ function ddItem(icon, label, onclick, cls = "") {
 function renderMain() {
   const main = q("#main");
   main.replaceChildren();
+
+  if (ui.home) { main.append(workspaceHomeEl()); return; }
+
   const board = getBoard();
   if (!board) return;
 
   main.append(boardHeadEl(board));
-  main.append(toolbarEl(board));
+  // Toolbar only for data views; doc/form/dashboard/chart/gantt have their own chrome.
+  if (["table", "kanban", "calendar", "gantt"].includes(board.view)) main.append(toolbarEl(board));
+  main.append(viewBodyEl(board));
+}
 
-  if (board.view === "table") main.append(tableViewEl(board));
-  else if (board.view === "kanban") main.append(kanbanViewEl(board));
-  else main.append(calendarViewEl(board));
+function viewBodyEl(board) {
+  switch (board.view) {
+    case "table":     return tableViewEl(board);
+    case "kanban":    return kanbanViewEl(board);
+    case "calendar":  return calendarViewEl(board);
+    case "gantt":     return ganttViewEl(board);
+    case "chart":     return chartViewEl(board);
+    case "dashboard": return dashboardViewEl(board);
+    case "form":      return formViewEl(board);
+    case "doc":       return docViewEl(board);
+    case "gallery":   return galleryViewEl(board);
+    default:          return tableViewEl(board);
+  }
 }
 
 function boardHeadEl(board) {
@@ -713,18 +862,21 @@ function boardHeadEl(board) {
   });
 
   const tabs = h("div", { class: "tabs" });
-  const TAB_DEFS = [
-    { id: "table", label: "Main table", icon: "table" },
-    { id: "kanban", label: "Kanban", icon: "kanban" },
-    { id: "calendar", label: "Calendar", icon: "calendar" },
-  ];
-  for (const td of TAB_DEFS) {
-    const tab = h("button", { class: "tab" + (board.view === td.id ? " active" : ""), onclick: () => { board.view = td.id; save(); render(); } });
-    tab.append(ico(td.icon, 14), h("span", {}, td.label));
+  for (const vid of board.views) {
+    const vm = viewMeta(vid);
+    const tab = h("button", { class: "tab" + (board.view === vid ? " active" : ""), onclick: () => { board.view = vid; save(); render(); } });
+    tab.append(ico(vm.icon, 14), h("span", {}, viewTab(vid)));
+    if (board.views.length > 1) {
+      const x = h("span", { class: "tab-x", title: "Remove view" });
+      x.append(ico("x", 12));
+      x.addEventListener("click", (e) => { e.stopPropagation(); removeView(board, vid); });
+      tab.append(x);
+    }
     tabs.append(tab);
   }
-  const plusTab = h("button", { class: "tab", title: "Add view", onclick: () => toast("Demo: views are fixed (table / kanban / calendar)") });
+  const plusTab = h("button", { class: "tab", title: "Add view" });
   plusTab.append(ico("plus", 14));
+  plusTab.addEventListener("click", () => viewsMenu(plusTab, board));
   tabs.append(plusTab);
 
   return h("div", { class: "board-head" },
@@ -737,6 +889,38 @@ function boardHeadEl(board) {
 function startBoardTitleEdit() {
   const title = q(".board-title");
   if (title) title.click();
+}
+
+function viewsMenu(anchor, board) {
+  openDropdown(anchor, (el, close) => {
+    el.append(h("div", { class: "dd-title" }, "Board views"));
+    for (const vm of VIEW_META) {
+      const active = board.views.includes(vm.id);
+      const it = h("div", { class: "dd-item", onclick: () => {
+        close();
+        if (!board.views.includes(vm.id)) board.views.push(vm.id);
+        board.view = vm.id;
+        save();
+        render();
+      } }, ico(vm.icon, 16), h("span", { style: "flex:1" }, vm.label), active ? ico("check", 14) : null);
+      el.append(it);
+    }
+  }, { minWidth: 220 });
+}
+
+function addView(board, vid) {
+  if (!board.views.includes(vid)) board.views.push(vid);
+  board.view = vid;
+  save();
+  render();
+}
+
+function removeView(board, vid) {
+  if (board.views.length <= 1) return;
+  board.views = board.views.filter(v => v !== vid);
+  if (board.view === vid) board.view = board.views[0];
+  save();
+  render();
 }
 
 function peopleManager(anchor) {
@@ -862,14 +1046,11 @@ function toolbarEl(board) {
 
 function rerenderViewOnly(board) {
   // re-render only the view area, keep toolbar input focus
+  if (ui.home) { renderMain(); return; }
   const main = q("#main");
-  const old = main.querySelector(".board-canvas, .kanban, .calendar");
+  const old = main.querySelector(".view-root");
   if (!old) return;
-  let fresh;
-  if (board.view === "table") fresh = tableViewEl(board);
-  else if (board.view === "kanban") fresh = kanbanViewEl(board);
-  else fresh = calendarViewEl(board);
-  old.replaceWith(fresh);
+  old.replaceWith(viewBodyEl(board));
 }
 
 function newTaskIn(board, group) {
@@ -973,7 +1154,7 @@ function gridTemplate(board) {
 }
 
 function tableViewEl(board) {
-  const canvas = h("div", { class: "board-canvas h-scroll" });
+  const canvas = h("div", { class: "view-root board-canvas h-scroll" });
   const wrap = h("div", { class: "group-wrap" });
   canvas.append(wrap);
 
@@ -1475,7 +1656,7 @@ function attachRowDropZone(row, group, idxFn) {
 /* ---------------- Render: kanban view ---------------- */
 
 function kanbanViewEl(board) {
-  const kb = h("div", { class: "kanban" });
+  const kb = h("div", { class: "view-root kanban" });
   for (const s of STATUSES) {
     const tasks = [];
     for (const g of board.groups) {
@@ -1550,7 +1731,7 @@ function calendarViewEl(board) {
   if (!ui.cal) ui.cal = { y: now.getFullYear(), m: now.getMonth() };
   const { y, m } = ui.cal;
 
-  const cal = h("div", { class: "calendar" });
+  const cal = h("div", { class: "view-root calendar" });
 
   const prev = h("button", { class: "icon-btn", onclick: () => { shiftMonth(-1); } });
   prev.append(ico("chevLeft", 16));
@@ -1632,6 +1813,396 @@ function shiftMonth(delta) {
   const d = new Date(y, m + delta, 1);
   ui.cal = { y: d.getFullYear(), m: d.getMonth() };
   softRender();
+}
+
+/* ---------------- Shared helpers for new views ---------------- */
+
+function allVisible(board) {
+  const out = [];
+  for (const g of board.groups) for (const t of visibleTasks(g)) out.push(t);
+  return out;
+}
+
+function tsToIso(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function isoToDays(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return Math.floor(Date.UTC(y, m - 1, d) / 86400000);
+}
+
+function boardModified(board) {
+  let max = board.createdAt || 0;
+  for (const g of board.groups) for (const t of g.tasks) if (t.updatedAt > max) max = t.updatedAt;
+  return max || Date.now();
+}
+
+function statusRows(tasks) {
+  return STATUSES.map(s => ({ label: s.label, n: tasks.filter(t => t.status === s.id).length, color: s.color }));
+}
+function priorityRows(tasks) {
+  return PRIORITIES.map(p => ({ label: p.label || "None", n: tasks.filter(t => t.priority === p.id).length, color: p.color }));
+}
+
+function chartCard(title, body) {
+  return h("div", { class: "chart-card" }, h("h3", {}, title), body);
+}
+
+function barChart(rows) {
+  const total = rows.reduce((a, b) => a + b.n, 0) || 1;
+  const wrap = h("div", {});
+  for (const r of rows) {
+    const pct = Math.round((r.n / total) * 100);
+    wrap.append(h("div", { class: "bar-row" },
+      h("div", { class: "bar-label" }, r.label),
+      h("div", { class: "bar-track" }, h("div", { class: "bar-fill", style: `width:${r.n ? Math.max(pct, 3) : 0}%;background:${r.color}` })),
+      h("div", { class: "bar-val" }, String(r.n))));
+  }
+  return wrap;
+}
+
+function donutEl(rows) {
+  const total = rows.reduce((a, b) => a + b.n, 0) || 1;
+  const R = 54, SW = 20, C = 2 * Math.PI * R;
+  let acc = 0;
+  const segs = rows.filter(r => r.n > 0).map(r => {
+    const len = (r.n / total) * C;
+    const seg = `<circle cx="70" cy="70" r="${R}" fill="none" stroke="${r.color}" stroke-width="${SW}" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-acc}" transform="rotate(-90 70 70)"/>`;
+    acc += len;
+    return seg;
+  }).join("");
+  const wrap = h("div", { class: "donut-wrap" });
+  const svgSpan = h("div", { class: "donut" });
+  svgSpan.innerHTML = `<svg width="140" height="140" viewBox="0 0 140 140">
+    <circle cx="70" cy="70" r="${R}" fill="none" style="stroke:var(--surface-2)" stroke-width="${SW}"/>${segs}
+    <text x="70" y="65" text-anchor="middle" font-size="28" font-weight="800" style="fill:var(--text)">${rows.reduce((a, b) => a + b.n, 0)}</text>
+    <text x="70" y="86" text-anchor="middle" font-size="11" style="fill:var(--text-2)">tasks</text></svg>`;
+  const legend = h("div", { class: "donut-legend" });
+  rows.forEach(r => legend.append(h("div", {},
+    h("span", { class: "legend-dot", style: `background:${r.color}` }),
+    h("span", {}, r.label || "—"),
+    h("span", { class: "muted", style: "margin-left:4px" }, String(r.n)))));
+  wrap.append(svgSpan, legend);
+  return wrap;
+}
+
+/* ---------------- Render: chart view ---------------- */
+
+function chartViewEl(board) {
+  const root = h("div", { class: "view-root chart-view" });
+  const tasks = allVisible(board);
+  root.append(chartCard("Status overview", donutEl(statusRows(tasks))));
+  root.append(chartCard("Tasks by status", barChart(statusRows(tasks))));
+  root.append(chartCard("Tasks by priority", barChart(priorityRows(tasks))));
+  const ownRows = state.people.map(p => ({ label: p.name.split(" ")[0], n: tasks.filter(t => t.owners.includes(p.id)).length, color: p.color }));
+  root.append(chartCard("Workload by person", barChart(ownRows)));
+  return root;
+}
+
+/* ---------------- Render: dashboard view ---------------- */
+
+function dashboardViewEl(board) {
+  const root = h("div", { class: "view-root dash-view" });
+  const tasks = allVisible(board);
+  const done = tasks.filter(t => t.status === "done").length;
+  const working = tasks.filter(t => t.status === "working").length;
+  const overdue = tasks.filter(t => t.due && t.status !== "done" && t.due < todayISO()).length;
+
+  const kpi = (num, label, accent) => {
+    const c = h("div", { class: "kpi-card" + (accent ? " accent" : ""), style: accent ? `background:${accent}` : "" });
+    c.append(h("div", { class: "kpi-num" }, String(num)),
+      h("div", { class: "kpi-label", style: accent ? "color:rgba(255,255,255,.88)" : "" }, label));
+    return c;
+  };
+  const kpis = h("div", { class: "dash-kpis" },
+    kpi(tasks.length, "Total tasks"),
+    kpi(done, "Completed", "#00c875"),
+    kpi(working, "In progress", "#fdab3d"),
+    kpi(overdue, "Overdue", "#e2445c"));
+  root.append(kpis);
+
+  const charts = h("div", { class: "dash-charts" },
+    chartCard("Status breakdown", donutEl(statusRows(tasks))),
+    chartCard("Tasks by priority", barChart(priorityRows(tasks))));
+  root.append(charts);
+  return root;
+}
+
+/* ---------------- Render: gantt view ---------------- */
+
+function ganttViewEl(board) {
+  const root = h("div", { class: "view-root gantt-view" });
+  const dated = allVisible(board).filter(t => t.due);
+  if (!dated.length) {
+    root.append(h("div", { class: "gantt-empty-note" }, "No tasks with due dates yet. Set due dates on tasks to see them on the timeline."));
+    return root;
+  }
+  const items = dated.map(t => {
+    const due = isoToDays(t.due);
+    const start = Math.min(due, isoToDays(tsToIso(t.createdAt || Date.now())));
+    return { t, start, end: due };
+  });
+  let min = Math.min(...items.map(i => i.start)) - 2;
+  let max = Math.max(...items.map(i => i.end)) + 3;
+  const span = Math.max(1, max - min);
+  const dayPx = 26;
+  const trackW = span * dayPx;
+  const nameW = 220;
+  const cols = `${nameW}px ${trackW}px`;
+
+  const inner = h("div", { class: "gantt-inner", style: `width:${nameW + trackW}px;position:relative` });
+
+  const head = h("div", { class: "gantt-head", style: `grid-template-columns:${cols}` });
+  head.append(h("div", { class: "gh-name" }, "Task"));
+  const monthsBar = h("div", { style: "position:relative;height:34px" });
+  for (let d = min; d <= max; d++) {
+    const dt = new Date(d * 86400000);
+    if (dt.getUTCDate() === 1 || d === min) {
+      const left = (d - min) * dayPx;
+      const yr = dt.getUTCFullYear() !== new Date().getFullYear() ? " " + dt.getUTCFullYear() : "";
+      monthsBar.append(h("div", { style: `position:absolute;left:${left}px;top:9px;font-size:11px;font-weight:600;color:var(--text-2);white-space:nowrap` }, `${MONTHS[dt.getUTCMonth()]}${yr}`));
+    }
+  }
+  head.append(monthsBar);
+  inner.append(head);
+
+  for (const g of board.groups) {
+    const gItems = items.filter(i => g.tasks.includes(i.t));
+    if (!gItems.length) continue;
+    inner.append(h("div", { class: "gantt-row", style: `grid-template-columns:${cols}` },
+      h("div", { class: "gname", style: `color:${g.color};font-weight:600` }, g.name), h("div", {})));
+    for (const it of gItems) {
+      const row = h("div", { class: "gantt-row", style: `grid-template-columns:${cols}` });
+      const nm = h("div", { class: "gname", title: it.t.name }, it.t.name);
+      nm.addEventListener("click", () => { ui.panel = it.t.id; renderPanel(); });
+      row.append(nm);
+      const track = h("div", { class: "gantt-track" });
+      const left = (it.start - min) * dayPx;
+      const width = Math.max(dayPx, (it.end - it.start + 1) * dayPx);
+      const s = statusOf(it.t);
+      const bar = h("div", { class: "gantt-bar", style: `left:${left}px;width:${width}px;background:${s.color}`, title: `${it.t.name} — due ${fmtDate(it.t.due)}` }, fmtDate(it.t.due));
+      bar.addEventListener("click", () => { ui.panel = it.t.id; renderPanel(); });
+      track.append(bar);
+      row.append(track);
+      inner.append(row);
+    }
+  }
+
+  const todayD = isoToDays(todayISO());
+  if (todayD >= min && todayD <= max) {
+    inner.append(h("div", { class: "gantt-today", style: `left:${nameW + (todayD - min) * dayPx}px`, title: "Today" }));
+  }
+
+  const scroll = h("div", { class: "gantt-scroll" }, inner);
+  root.append(scroll);
+  return root;
+}
+
+/* ---------------- Render: form view ---------------- */
+
+function formViewEl(board) {
+  const root = h("div", { class: "view-root form-view" });
+  const card = h("div", { class: "form-card" });
+  card.append(h("div", { class: "form-banner" }));
+  const inner = h("div", { class: "form-inner" });
+  inner.append(h("h2", {}, board.name), h("div", { class: "form-sub" }, "Fill in the details to add a new item to this board."));
+
+  const data = { name: "", status: "none", priority: "none", owners: new Set(), due: "" };
+
+  const field = (label, control) => h("div", { class: "form-field" }, h("label", {}, label), control);
+  const chipGroup = (defs, isSel, toggle) => {
+    const wrap = h("div", { class: "form-chips" });
+    const draw = () => {
+      wrap.replaceChildren();
+      for (const d of defs) {
+        const sel = isSel(d.id);
+        const c = h("div", { class: "form-chip" + (sel ? " sel" : ""), style: sel ? `background:${d.color}` : "" }, d.label || "—");
+        c.addEventListener("click", () => { toggle(d.id); draw(); });
+        wrap.append(c);
+      }
+    };
+    draw();
+    return wrap;
+  };
+
+  const nameIn = h("input", { type: "text", placeholder: "e.g. Launch summer campaign" });
+  nameIn.addEventListener("input", () => data.name = nameIn.value);
+  inner.append(field("Item name *", nameIn));
+
+  inner.append(field("Status", chipGroup(STATUSES, id => data.status === id, id => data.status = id)));
+  inner.append(field("Priority", chipGroup(PRIORITIES, id => data.priority === id, id => data.priority = id)));
+
+  const peopleDefs = state.people.map(p => ({ id: p.id, label: p.name.split(" ")[0], color: p.color }));
+  inner.append(field("Owners", chipGroup(peopleDefs, id => data.owners.has(id), id => { data.owners.has(id) ? data.owners.delete(id) : data.owners.add(id); })));
+
+  const dateIn = h("input", { type: "date" });
+  dateIn.addEventListener("change", () => data.due = dateIn.value);
+  inner.append(field("Due date", dateIn));
+
+  const submit = h("button", { class: "btn-primary form-submit" }, "Submit item");
+  submit.addEventListener("click", () => {
+    if (!data.name.trim()) { toast("Please enter an item name"); nameIn.focus(); return; }
+    let g = board.groups[0];
+    if (!g) { addGroup(board); g = board.groups[0]; }
+    const t = addTask(g, data.name.trim());
+    t.status = data.status;
+    t.priority = data.priority;
+    t.owners = [...data.owners];
+    t.due = data.due;
+    touch(t);
+    save();
+    toast(`"${t.name}" added to ${g.name}`);
+    rerenderViewOnly(board);
+  });
+  inner.append(submit);
+
+  card.append(inner);
+  root.append(card);
+  return root;
+}
+
+/* ---------------- Render: doc view ---------------- */
+
+function docViewEl(board) {
+  const root = h("div", { class: "view-root doc-view" });
+  const paper = h("div", { class: "doc-paper" });
+  const ta = h("textarea", { placeholder: "Start writing your doc... (saved automatically)" });
+  ta.value = board.doc || "";
+  ta.addEventListener("input", () => { board.doc = ta.value; save(); });
+  paper.append(ta);
+  root.append(paper);
+  return root;
+}
+
+/* ---------------- Render: file gallery view ---------------- */
+
+function galleryViewEl(board) {
+  const root = h("div", { class: "view-root gallery-view" });
+  const tasks = allVisible(board);
+  if (!tasks.length) {
+    root.append(h("div", { class: "empty-board" }, "No items to show in the gallery yet."));
+    return root;
+  }
+  const grid = h("div", { class: "gallery-grid" });
+  for (const t of tasks) {
+    const s = statusOf(t);
+    const card = h("div", { class: "gallery-card", onclick: () => { ui.panel = t.id; renderPanel(); } });
+    card.append(h("div", { class: "gallery-thumb", style: `background:${s.color}` }, initials(t.name || "?")));
+    const info = h("div", { class: "gallery-info" }, h("b", {}, t.name));
+    const meta = h("div", { class: "kb-meta" }, h("span", {}, s.label));
+    if (t.due) meta.append(h("span", {}, "· " + fmtDate(t.due)));
+    info.append(meta);
+    card.append(info);
+    grid.append(card);
+  }
+  root.append(grid);
+  return root;
+}
+
+/* ---------------- Render: workspace home ---------------- */
+
+function workspaceHomeEl() {
+  const root = h("div", { class: "view-root wh" });
+  root.append(h("div", { class: "wh-banner" }));
+  const body = h("div", { class: "wh-body" });
+
+  const logo = h("div", { class: "wh-logo" }, "M", h("span", { class: "wh-home-badge" }, ico("home", 16)));
+
+  const name = h("div", { class: "wh-name" }, state.workspace.name);
+  name.addEventListener("click", () => inlineEdit(name, state.workspace.name, (v) => { state.workspace.name = v; save(); render(); }, { style: "font-size:26px;font-weight:700" }));
+  const titleRow = h("div", { class: "wh-title-row" }, name, ico("chevDown", 18));
+
+  const desc = h("div", { class: "wh-desc" + (state.workspace.desc ? "" : " muted") }, state.workspace.desc || "Add workspace description");
+  desc.addEventListener("click", () => inlineEdit(desc, state.workspace.desc, (v) => { state.workspace.desc = v; save(); render(); }));
+
+  const titles = h("div", { class: "wh-titles" }, titleRow, desc);
+
+  const whAction = (icon, label, fn) => {
+    const b = h("button", { class: "tb-btn", onclick: fn });
+    b.append(ico(icon, 15), h("span", {}, label));
+    return b;
+  };
+  const membersBtn = h("button", { class: "btn-invite" });
+  membersBtn.append(ico("person", 15), h("span", {}, "Members"));
+  membersBtn.addEventListener("click", (e) => peopleManager(e.currentTarget));
+  const actions = h("div", { class: "wh-actions" },
+    whAction("chat", "Feedback", () => toast("Thanks for the feedback! (demo)")),
+    whAction("agent", "Agents", () => toast("Agents — coming soon in demo")),
+    membersBtn);
+
+  body.append(h("div", { class: "wh-head" }, logo, titles, actions));
+
+  const tabs = h("div", { class: "wh-tabs" });
+  const TABS = [["recents", "Recents", "calendar"], ["content", "Content", "apps"], ["collaborators", "Collaborators", "person"], ["permissions", "Permissions", "gear"]];
+  for (const [id, label, icon] of TABS) {
+    const t = h("button", { class: "wh-tab" + (ui.homeTab === id ? " active" : ""), onclick: () => { ui.homeTab = id; renderMain(); } });
+    t.append(ico(icon, 15), h("span", {}, label));
+    tabs.append(t);
+  }
+  body.append(tabs);
+
+  if (ui.homeTab === "collaborators") body.append(whCollaborators());
+  else if (ui.homeTab === "permissions") body.append(h("div", { style: "padding:34px 0;color:var(--text-2)" }, "This workspace is private to you and invited members. Granular permission controls are coming soon in this demo."));
+  else body.append(whContent(ui.homeTab === "recents"));
+
+  root.append(body);
+  return root;
+}
+
+function whCollaborators() {
+  const grid = h("div", { class: "wh-collab" });
+  for (const p of state.people) {
+    grid.append(h("div", { class: "wh-collab-card" }, avatarEl(p, 42),
+      h("div", {}, h("b", {}, p.name), h("div", { class: "muted" }, p.id === state.user ? "Owner · you" : "Member"))));
+  }
+  return grid;
+}
+
+function whContent(recents) {
+  const wrap = h("div", {});
+  let filter = "";
+
+  const tb = h("div", { class: "wh-toolbar" });
+  const searchWrap = h("div", { class: "board-search-wrap", style: "border:1px solid var(--border)" });
+  const si = h("input", { type: "text", placeholder: "Search" });
+  si.addEventListener("input", () => { filter = si.value.toLowerCase(); drawTable(); });
+  searchWrap.append(ico("search", 15), si);
+  const filterBtn = h("button", { class: "tb-btn", onclick: () => toast("Filters — coming soon in demo") });
+  filterBtn.append(ico("filterFunnel", 15), h("span", {}, "Filters"));
+  tb.append(searchWrap, filterBtn);
+  wrap.append(tb);
+
+  const table = h("table", { class: "wh-table" });
+  const thead = h("thead", {}, h("tr", {},
+    h("th", {}, "Asset name"), h("th", {}, "AI summary"), h("th", {}, "Creator"),
+    h("th", {}, "Creation date"), h("th", {}, "Last modified")));
+  const tbody = h("tbody", {});
+  table.append(thead, tbody);
+  wrap.append(table);
+
+  const drawTable = () => {
+    tbody.replaceChildren();
+    let boards = state.boards.slice();
+    if (recents) boards.sort((a, b) => boardModified(b) - boardModified(a));
+    for (const b of boards) {
+      if (filter && !b.name.toLowerCase().includes(filter)) continue;
+      const creator = personById(b.creator) || me();
+      const aiBtn = h("button", { class: "wh-ai", onclick: (e) => { e.stopPropagation(); toast("AI summary — coming soon in demo"); } });
+      aiBtn.append(ico("vibe", 13), h("span", {}, "Generate"));
+      const row = h("tr", { class: "wh-asset-row", onclick: () => switchBoard(b.id) },
+        h("td", {}, h("div", { class: "wh-asset" }, ico(b.icon || "table", 16), h("span", {}, b.name))),
+        h("td", {}, aiBtn),
+        h("td", {}, h("div", { style: "display:flex;align-items:center;gap:8px" }, avatarEl(creator, 24), h("span", { class: "muted" }, creator.name.split(" ")[0]))),
+        h("td", { class: "muted" }, fmtDate(tsToIso(b.createdAt), true)),
+        h("td", { class: "muted" }, fmtDate(tsToIso(boardModified(b)), true)));
+      tbody.append(row);
+    }
+    if (!tbody.children.length) tbody.append(h("tr", {}, h("td", { colspan: "5", class: "muted", style: "padding:20px;text-align:center" }, "No assets match your search.")));
+  };
+  drawTable();
+  return wrap;
 }
 
 /* ---------------- Render: bulk bar ---------------- */
@@ -1805,6 +2376,71 @@ function exportCSV(board) {
   toast("CSV exported");
 }
 
+/* ---------------- Profile ---------------- */
+
+function scaleImage(file, cb) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const size = 160;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      const min = Math.min(img.width, img.height);
+      const sx = (img.width - min) / 2, sy = (img.height - min) / 2;
+      ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+      cb(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function profileMenu(anchor) {
+  openDropdown(anchor, (el, close) => {
+    el.classList.add("profile-pop");
+    const p = me();
+
+    const fileIn = h("input", { type: "file", accept: "image/*", style: "display:none" });
+    fileIn.addEventListener("change", () => {
+      const f = fileIn.files[0];
+      if (!f) return;
+      scaleImage(f, (url) => { me().avatar = url; save(); render(); toast("Profile photo updated"); });
+    });
+    const avaWrap = h("div", { class: "profile-ava-wrap", title: "Change photo", onclick: () => fileIn.click() },
+      avatarEl(p, 72), h("span", { class: "profile-ava-edit" }, ico("camera", 14)));
+    el.append(h("div", { class: "profile-top" }, avaWrap, fileIn,
+      h("div", { class: "profile-name-big" }, p.name),
+      h("div", { class: "profile-mail" }, "Workspace owner")));
+
+    const input = h("input", { type: "text", value: p.name, placeholder: "Your name" });
+    const okBtn = h("button", {}, "Save");
+    const doSave = () => { const v = input.value.trim(); if (!v) return; me().name = v; save(); close(); render(); toast("Profile updated"); };
+    okBtn.addEventListener("click", doSave);
+    input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") doSave(); ev.stopPropagation(); });
+    el.append(h("div", { class: "dd-input-row" }, input, okBtn));
+
+    if (p.avatar) el.append(ddItem("trash", "Remove photo", () => { me().avatar = null; save(); render(); toast("Photo removed"); }));
+
+    el.append(h("hr", { class: "dd-sep" }));
+    el.append(ddItem("personPlus", "Manage members", () => { close(); peopleManager(anchor); }));
+    el.append(ddItem(state.theme === "light" ? "moon" : "sun", state.theme === "light" ? "Dark mode" : "Light mode", () => {
+      state.theme = state.theme === "light" ? "dark" : "light"; save(); close(); render();
+    }));
+    el.append(ddItem("trash", "Reset demo data", () => {
+      close();
+      localStorage.removeItem(LS_KEY);
+      load();
+      resetBoardUi();
+      ui.home = false;
+      render();
+      toast("Demo data reset");
+    }, "danger"));
+  }, { alignRight: true, minWidth: 280 });
+}
+
 /* ---------------- Topbar wiring (static) ---------------- */
 
 function wireTopbar() {
@@ -1820,41 +2456,7 @@ function wireTopbar() {
     }, { alignRight: true, minWidth: 220 });
   });
 
-  q("#me-btn").addEventListener("click", (e) => {
-    const btn = e.currentTarget;
-    openDropdown(btn, (el, close) => {
-      el.append(h("div", { class: "dd-title" }, "Profile"));
-      const input = h("input", { type: "text", value: me().name, placeholder: "Your name" });
-      const okBtn = h("button", {}, "Save");
-      const doSave = () => {
-        const v = input.value.trim();
-        if (!v) return;
-        me().name = v;
-        save();
-        close();
-        render();
-        toast("Profile updated");
-      };
-      okBtn.addEventListener("click", doSave);
-      input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") doSave(); ev.stopPropagation(); });
-      el.append(h("div", { class: "dd-input-row" }, input, okBtn));
-      el.append(h("hr", { class: "dd-sep" }));
-      el.append(ddItem(state.theme === "light" ? "moon" : "sun", state.theme === "light" ? "Dark mode" : "Light mode", () => {
-        state.theme = state.theme === "light" ? "dark" : "light";
-        save();
-        close();
-        render();
-      }));
-      el.append(ddItem("trash", "Reset demo data", () => {
-        close();
-        localStorage.removeItem(LS_KEY);
-        load();
-        resetBoardUi();
-        render();
-        toast("Demo data reset");
-      }, "danger"));
-    }, { alignRight: true, minWidth: 240 });
-  });
+  q("#me-btn").addEventListener("click", (e) => profileMenu(e.currentTarget));
 
   const gs = q("#global-search");
   gs.addEventListener("input", () => {
