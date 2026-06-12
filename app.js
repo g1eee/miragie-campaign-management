@@ -107,6 +107,10 @@ const PATHS = {
   pie: '<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M12 3v9h9A9 9 0 0 0 12 3z" opacity="0.55"/>',
   line: '<path d="M4 5v14h16"/><path d="M7 14l4-4 3 3 5-6"/>',
   widget: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>',
+  list: '<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.2" fill="currentColor" stroke="none"/>',
+  link: '<path d="M9 15l6-6M10.5 6.5l1-1a3.5 3.5 0 0 1 5 5l-1 1M13.5 17.5l-1 1a3.5 3.5 0 0 1-5-5l1-1"/>',
+  bolt: '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
 };
 
 function ico(name, size = 16) {
@@ -239,15 +243,23 @@ function migrate() {
   for (const p of state.people) if (!("avatar" in p)) p.avatar = null;
   for (const b of state.boards) {
     if (!b.workspaceId) b.workspaceId = state.workspaces[0].id;
+    if (!b.kind) b.kind = "board";
     if (!Array.isArray(b.views)) b.views = ["table", "kanban", "calendar"];
     if (!b.view || !b.views.includes(b.view)) b.view = b.views[0] || "table";
     if (!b.hidden) b.hidden = [];
     if (b.doc == null) b.doc = "";
     if (!Array.isArray(b.widgets)) b.widgets = [];
+    if (!Array.isArray(b.columns)) b.columns = [];
+    if (!b.chartConfig) b.chartConfig = { chartType: "donut", metric: "status" };
     if (!b.createdAt) b.createdAt = Date.now();
     if (!b.creator) b.creator = state.user || "u1";
     if (!b.icon) b.icon = "table";
+    for (const g of b.groups || []) for (const t of g.tasks) {
+      if (!t.cells) t.cells = {};
+      if (!Array.isArray(t.files)) t.files = [];
+    }
   }
+  if (!Array.isArray(state.workflows)) state.workflows = [];
 }
 
 function mkTask(name, opts = {}) {
@@ -259,11 +271,45 @@ function mkTask(name, opts = {}) {
     due: opts.due || "",
     priority: opts.priority || "none",
     desc: opts.desc || "",
+    cells: {},        // custom column values: { colId: value }
+    files: [],        // [{id,name,dataURL}]
     updates: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
     updatedBy: opts.by || "u1",
   };
+}
+
+const COLUMN_TYPES = [
+  { type: "status",   name: "Status",   icon: "kanban",   color: "#00c875", desc: "Track progress with colored labels" },
+  { type: "text",     name: "Text",     icon: "doc",      color: "#0086c0", desc: "Add any text" },
+  { type: "people",   name: "People",   icon: "person",   color: "#579bfc", desc: "Assign team members" },
+  { type: "dropdown", name: "Dropdown", icon: "chevDown", color: "#a25ddc", desc: "Pick one or more labels" },
+  { type: "date",     name: "Date",     icon: "calendar", color: "#5559df", desc: "Pick a date" },
+  { type: "numbers",  name: "Numbers",  icon: "numbers",  color: "#fdab3d", desc: "Track any number" },
+];
+const colTypeMeta = (type) => COLUMN_TYPES.find(c => c.type === type) || COLUMN_TYPES[1];
+
+const LABEL_PALETTE = ["#fdab3d", "#00c875", "#e2445c", "#579bfc", "#a25ddc", "#5559df", "#0086c0", "#ff642e", "#9d50dd", "#333333", "#ffcb00", "#c4c4c4"];
+
+function defaultLabels(type) {
+  if (type === "status") return [
+    { id: uid(), label: "Working on it", color: "#fdab3d" },
+    { id: uid(), label: "Done", color: "#00c875" },
+    { id: uid(), label: "Stuck", color: "#e2445c" },
+    { id: uid(), label: "", color: "#c4c4c4" },
+  ];
+  return [
+    { id: uid(), label: "Option 1", color: "#579bfc" },
+    { id: uid(), label: "Option 2", color: "#a25ddc" },
+  ];
+}
+
+function mkColumn(type) {
+  const meta = colTypeMeta(type);
+  const col = { id: uid(), type, name: meta.name, width: type === "text" ? 220 : 150 };
+  if (type === "status" || type === "dropdown") col.labels = defaultLabels(type);
+  return col;
 }
 
 function seed() {
@@ -591,6 +637,7 @@ function addTask(group, name, atTop = false) {
   const t = mkTask(name, { by: state.user });
   if (atTop) group.tasks.unshift(t); else group.tasks.push(t);
   save();
+  runWorkflows({ type: "created", task: t });
   return t;
 }
 
@@ -693,10 +740,14 @@ function addBoard(opts = {}) {
     view: opts.view || views[0],
     views,
     icon: opts.icon || "table",
+    kind: opts.kind || "board",
     workspaceId: opts.workspaceId || state.activeWorkspace,
     hidden: [],
     doc: "",
     widgets: [],
+    columns: [],
+    chartConfig: { chartType: "donut", metric: "status" },
+    rules: opts.kind === "workflow" ? [] : undefined,
     creator: state.user,
     createdAt: Date.now(),
     groups: [
@@ -988,6 +1039,10 @@ function renderSidebar() {
 function renderBoardList(list) {
   list.replaceChildren();
   const filter = ui.sideSearch.toLowerCase();
+  if (!ui.sideCollapsed && !wsBoards().length) {
+    list.append(h("div", { class: "side-empty" }, h("b", {}, "This workspace is empty"), h("span", {}, 'Click the "+" button to begin adding your first items.')));
+    return;
+  }
   for (const b of wsBoards()) {
     if (filter && !b.name.toLowerCase().includes(filter)) continue;
     const menuBtn = h("button", { class: "item-menu", title: "Board menu" });
@@ -1023,11 +1078,14 @@ function addNewMenu(anchor) {
       close();
       addBoard({ name: "New Form", icon: "form", view: "form", views: ["form", "table"], desc: "Collect items through a form.", toast: "Form created" });
     }));
+    el.append(ddItem("workflow", "Workflow", () => {
+      close();
+      addBoard({ name: "New Workflow", icon: "workflow", views: ["table"], kind: "workflow", toast: "Workflow created" });
+    }));
     el.append(h("hr", { class: "dd-sep" }));
     const soon = [
       ["agent", "Agent"],
       ["vibe", "Vibe app"],
-      ["workflow", "Workflow"],
       ["folder", "Folder"],
       ["template", "Template center"],
     ];
@@ -1071,6 +1129,11 @@ function renderMain() {
   if (ui.home) { main.append(workspaceHomeEl()); return; }
 
   const board = getBoard();
+  if (board && board.kind === "workflow") {
+    main.append(workflowHeadEl(board));
+    main.append(workflowViewEl(board));
+    return;
+  }
   if (!board) {
     const empty = h("div", { class: "empty-board" },
       h("div", { style: "font-size:16px;margin-bottom:10px;color:var(--text)" }, "This workspace has no boards yet"));
@@ -1438,7 +1501,8 @@ function hidePanel(anchor, board) {
 
 function gridTemplate(board) {
   const cols = COLUMNS.filter(c => !board.hidden.includes(c.id));
-  return `36px minmax(300px, 1fr) ${cols.map(c => c.w + "px").join(" ")} 40px`.replace(/\s+/g, " ");
+  const custom = board.columns.map(c => (c.width || 150) + "px").join(" ");
+  return `36px minmax(280px, 1fr) ${cols.map(c => c.w + "px").join(" ")} ${custom} 40px`.replace(/\s+/g, " ").trim();
 }
 
 function tableViewEl(board) {
@@ -1513,8 +1577,9 @@ function groupEl(board, group) {
   headRow.append(h("div", { class: "cell check-col" }, headCb));
   headRow.append(h("div", { class: "cell name-col" }, "Task"));
   for (const c of cols) headRow.append(h("div", { class: "cell" }, c.label));
-  const addCol = h("div", { class: "cell add-col", title: "Add column (demo)" }, ico("plus", 14));
-  addCol.addEventListener("click", () => toast("Demo: column set is fixed"));
+  for (const col of board.columns) headRow.append(colHeaderEl(board, col));
+  const addCol = h("div", { class: "cell add-col", title: "Add column" }, ico("plus", 14));
+  addCol.addEventListener("click", () => addColumnMenu(addCol, board, board.columns.length));
   headRow.append(addCol);
   table.append(headRow);
 
@@ -1547,6 +1612,12 @@ function groupEl(board, group) {
       if (c.id === "status") cell.append(batteryEl(tasks, "status"));
       else if (c.id === "priority") cell.append(batteryEl(tasks, "priority"));
       else if (c.id === "date") cell.append(rangePillEl(tasks));
+      sum.append(cell);
+    }
+    for (const col of board.columns) {
+      const cell = h("div", { class: "cell" });
+      if (col.type === "numbers") { const total = tasks.reduce((a, t) => a + (Number(t.cells[col.id]) || 0), 0); cell.append(h("span", { style: "font-weight:700" }, total ? String(Math.round(total * 100) / 100) : "")); }
+      else if (col.type === "status" || col.type === "dropdown") cell.append(colBatteryEl(tasks, col));
       sum.append(cell);
     }
     sum.append(h("div", { class: "cell", style: "border-left:none" }));
@@ -1614,9 +1685,234 @@ function groupMenu(anchor, board, group, nameEl) {
         onclick: () => { group.color = c; save(); close(); render(); },
       }));
     }
-    el.append(pal, h("hr", { class: "dd-sep" }),
+    const custom = h("input", { type: "color", value: /^#([0-9a-f]{6})$/i.test(group.color) ? group.color : "#579bfc", title: "Custom color", style: "width:100%;height:32px;border:none;background:none;cursor:pointer;margin-top:4px" });
+    custom.addEventListener("input", () => { group.color = custom.value; save(); render(); });
+    el.append(pal, custom, h("hr", { class: "dd-sep" }),
       ddItem("trash", "Delete group", () => { close(); deleteGroup(board, group); }, "danger"));
   }, { minWidth: 210 });
+}
+
+/* ---------------- Custom columns ---------------- */
+
+function setColVal(task, col, v) {
+  if (v == null || v === "" || (Array.isArray(v) && !v.length)) delete task.cells[col.id];
+  else task.cells[col.id] = v;
+  touch(task);
+  save();
+  runWorkflows({ type: "cell", task, col });
+}
+
+function softRenderTable(board) { if (!ui.home && getBoard() === board && board.view === "table") rerenderViewOnly(board); }
+
+function colHeaderEl(board, col) {
+  const cell = h("div", { class: "cell col-head-cell", style: "justify-content:space-between;gap:4px;cursor:default" });
+  cell.append(h("span", { class: "col-name", title: col.name, style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, col.name));
+  const menu = h("button", { class: "col-menu-btn", title: "Column options" });
+  menu.append(ico("dots", 13));
+  menu.addEventListener("click", (e) => { e.stopPropagation(); colMenu(menu, board, col); });
+  cell.append(menu);
+  return cell;
+}
+
+function colMenu(anchor, board, col) {
+  openDropdown(anchor, (el, close) => {
+    el.append(ddItem("pencil", "Rename", () => { close(); modalPrompt("Rename column", "Column name", col.name, (v) => { col.name = v; save(); render(); }); }));
+    if (col.type === "status" || col.type === "dropdown") el.append(ddItem("kanban", "Edit Labels", () => { close(); labelEditor(anchor, board, col); }));
+    el.append(ddItem("plus", "Add column to the right", () => { close(); addColumnMenu(anchor, board, board.columns.indexOf(col) + 1); }));
+    el.append(h("hr", { class: "dd-sep" }), ddItem("trash", "Delete column", () => { close(); deleteColumn(board, col); }, "danger"));
+  }, { minWidth: 210 });
+}
+
+function addColumnMenu(anchor, board, index) {
+  openDropdown(anchor, (el, close) => {
+    el.classList.add("addcol-menu");
+    const search = h("div", { class: "side-search", style: "margin:2px 0 8px" });
+    const si = h("input", { type: "text", placeholder: "Search or describe your column" });
+    search.append(ico("search", 14), si);
+    el.append(search);
+    el.append(h("div", { class: "dd-title" }, "Essentials"));
+    const grid = h("div", { class: "addcol-grid" });
+    const draw = () => {
+      grid.replaceChildren();
+      const f = si.value.toLowerCase();
+      for (const t of COLUMN_TYPES) {
+        if (f && !t.name.toLowerCase().includes(f)) continue;
+        grid.append(h("div", { class: "addcol-item", onclick: () => { close(); addColumn(board, t.type, index); } },
+          h("span", { class: "addcol-ico", style: `background:${t.color}` }, ico(t.icon, 15)), h("span", {}, t.name)));
+      }
+      if (!grid.children.length) grid.append(h("div", { class: "muted", style: "padding:8px" }, "No matches"));
+    };
+    si.addEventListener("input", draw);
+    si.addEventListener("keydown", (e) => e.stopPropagation());
+    draw();
+    el.append(grid);
+  }, { minWidth: 300 });
+}
+
+function addColumn(board, type, index) {
+  const col = mkColumn(type);
+  if (index == null || index < 0 || index > board.columns.length) board.columns.push(col);
+  else board.columns.splice(index, 0, col);
+  save();
+  render();
+  toast(`${colTypeMeta(type).name} column added`);
+}
+
+function deleteColumn(board, col) {
+  board.columns = board.columns.filter(c => c !== col);
+  for (const g of board.groups) for (const t of g.tasks) delete t.cells[col.id];
+  save();
+  render();
+  toast(`Column "${col.name}" deleted`);
+}
+
+function colBatteryEl(tasks, col) {
+  const bat = h("div", { class: "battery" });
+  if (!tasks.length) return bat;
+  for (const lb of (col.labels || [])) {
+    const n = tasks.filter(t => { const v = t.cells[col.id]; return col.type === "dropdown" ? (Array.isArray(v) && v.includes(lb.id)) : v === lb.id; }).length;
+    if (!n) continue;
+    bat.append(h("span", { style: `background:${lb.color};flex:${n} 1 0`, title: `${lb.label || "—"} ${n}` }));
+  }
+  return bat;
+}
+
+function cellEditorEl(board, task, col) {
+  switch (col.type) {
+    case "text": return textCellEl(task, col);
+    case "numbers": return numberCellEl(task, col);
+    case "date": return colDateCellEl(task, col);
+    case "people": return colPeopleCellEl(task, col);
+    case "status": return colStatusCellEl(board, task, col);
+    case "dropdown": return colDropdownCellEl(board, task, col);
+    default: return h("div", { class: "cell" });
+  }
+}
+
+function textCellEl(task, col) {
+  const cell = h("div", { class: "cell", title: "Click to edit" });
+  const span = h("span", { style: "width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 4px;border-radius:4px;cursor:text" }, task.cells[col.id] || "");
+  span.addEventListener("click", () => {
+    const input = h("input", { class: "inline-input", value: task.cells[col.id] || "" });
+    cell.replaceChildren(input); input.focus(); input.select();
+    let done = false;
+    const fin = (ok) => { if (done) return; done = true; if (ok) setColVal(task, col, input.value.trim()); softRenderTable(getBoard()); };
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") fin(true); if (e.key === "Escape") fin(false); e.stopPropagation(); });
+    input.addEventListener("blur", () => fin(true));
+  });
+  cell.append(span);
+  return cell;
+}
+
+function numberCellEl(task, col) {
+  const cell = h("div", { class: "cell", style: "justify-content:flex-end" });
+  const v = task.cells[col.id];
+  const span = h("span", { style: "padding:2px 6px;cursor:text;border-radius:4px" }, v != null ? String(v) : "");
+  span.addEventListener("click", () => {
+    const input = h("input", { class: "inline-input", type: "number", value: v != null ? String(v) : "", style: "text-align:right" });
+    cell.replaceChildren(input); input.focus(); input.select();
+    let done = false;
+    const fin = (ok) => { if (done) return; done = true; if (ok) { const t = input.value.trim(); setColVal(task, col, t === "" ? "" : Number(t)); } softRenderTable(getBoard()); };
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") fin(true); if (e.key === "Escape") fin(false); e.stopPropagation(); });
+    input.addEventListener("blur", () => fin(true));
+  });
+  cell.append(span);
+  return cell;
+}
+
+function colDateCellEl(task, col) {
+  const v = task.cells[col.id];
+  const cell = h("div", { class: "cell date-cell" + (v ? "" : " empty"), title: "Set date" });
+  if (!v) cell.append(ico("calendar", 14)); else cell.append(h("span", {}, fmtDate(v)));
+  cell.addEventListener("click", () => openDropdown(cell, (dd, close) => {
+    const input = h("input", { type: "date", value: v || "" });
+    input.addEventListener("change", () => { setColVal(task, col, input.value); close(); softRenderTable(getBoard()); });
+    const clr = h("button", { onclick: () => { setColVal(task, col, ""); close(); softRenderTable(getBoard()); } }, "Clear");
+    dd.append(h("div", { class: "date-pop" }, input, h("div", { class: "date-pop-row" }, clr)));
+  }, { minWidth: 200 }));
+  return cell;
+}
+
+function colPeopleCellEl(task, col) {
+  const ids = Array.isArray(task.cells[col.id]) ? task.cells[col.id] : [];
+  const cell = h("div", { class: "cell owner-cell" });
+  const ppl = ids.map(personById).filter(Boolean);
+  if (!ppl.length) cell.append(h("span", { class: "avatar-empty" }, ico("person", 13)));
+  else { const stack = h("span", { class: "avatar-stack" }); ppl.slice(0, 2).forEach(p => stack.append(avatarEl(p, 26))); if (ppl.length > 2) stack.append(h("span", { class: "avatar", style: "background:var(--text-2);width:26px;height:26px;font-size:10px" }, `+${ppl.length - 2}`)); cell.append(stack); }
+  cell.addEventListener("click", () => openDropdown(cell, (dd) => {
+    dd.append(h("div", { class: "dd-title" }, "Assign people"));
+    for (const p of state.people) {
+      const cur = Array.isArray(task.cells[col.id]) ? task.cells[col.id] : [];
+      const has = cur.includes(p.id);
+      dd.append(h("div", { class: "dd-item", onclick: () => { let arr = Array.isArray(task.cells[col.id]) ? [...task.cells[col.id]] : []; arr.includes(p.id) ? arr = arr.filter(x => x !== p.id) : arr.push(p.id); setColVal(task, col, arr); softRender(); refreshDd(); } },
+        avatarEl(p, 24), h("span", { style: "flex:1" }, p.name), has ? ico("check", 14) : null));
+    }
+  }, { minWidth: 220 }));
+  return cell;
+}
+
+function colStatusCellEl(board, task, col) {
+  const v = task.cells[col.id];
+  const lb = (col.labels || []).find(l => l.id === v);
+  const cell = h("div", { class: "cell", style: "padding:0 8px" });
+  const fill = h("div", { class: "cell-fill", style: `background:${lb ? lb.color : "#c4c4c4"}`, title: lb ? lb.label : "" }, lb ? lb.label : "");
+  fill.addEventListener("click", () => labelPicker(fill, board, task, col, false));
+  cell.append(fill);
+  return cell;
+}
+
+function colDropdownCellEl(board, task, col) {
+  const v = Array.isArray(task.cells[col.id]) ? task.cells[col.id] : [];
+  const cell = h("div", { class: "cell dropdown-cell", style: "flex-wrap:wrap;gap:4px;padding:4px 6px;cursor:pointer;justify-content:flex-start" });
+  const sel = v.map(id => (col.labels || []).find(l => l.id === id)).filter(Boolean);
+  if (!sel.length) cell.append(h("span", { class: "muted" }, "—"));
+  else sel.forEach(lb => cell.append(h("span", { class: "dd-tag", style: `background:${lb.color}` }, lb.label || "—")));
+  cell.addEventListener("click", () => labelPicker(cell, board, task, col, true));
+  return cell;
+}
+
+function labelPicker(anchor, board, task, col, multi) {
+  openDropdown(anchor, (el, close) => {
+    for (const lb of (col.labels || [])) {
+      const cur = task.cells[col.id];
+      const on = multi ? (Array.isArray(cur) && cur.includes(lb.id)) : cur === lb.id;
+      const row = h("div", { class: "dd-color", style: `background:${lb.color}`, onclick: () => {
+        if (multi) { let arr = Array.isArray(task.cells[col.id]) ? [...task.cells[col.id]] : []; arr.includes(lb.id) ? arr = arr.filter(x => x !== lb.id) : arr.push(lb.id); setColVal(task, col, arr); softRender(); refreshDd(); }
+        else { setColVal(task, col, lb.id); close(); softRender(); }
+      } }, lb.label || "—");
+      if (on) row.append(h("span", { style: "margin-left:auto" }, ico("check", 14)));
+      el.append(row);
+    }
+    el.append(h("div", { class: "dd-color", style: "background:#c4c4c4", onclick: () => { setColVal(task, col, multi ? [] : ""); close(); softRender(); } }, "Clear"));
+    el.append(h("hr", { class: "dd-sep" }), h("button", { class: "dd-footer-btn", onclick: () => { close(); labelEditor(anchor, board, col); } }, "✎ Edit Labels"));
+  }, { minWidth: 190 });
+}
+
+function labelEditor(anchor, board, col) {
+  openDropdown(anchor, (el) => {
+    el.append(h("div", { class: "dd-title" }, "Edit Labels"));
+    const host = h("div", {});
+    el.append(host);
+    const draw = () => {
+      host.replaceChildren();
+      for (const lb of col.labels) {
+        const sw = h("input", { type: "color", class: "lbl-swatch", value: /^#([0-9a-f]{6})$/i.test(lb.color) ? lb.color : "#888888", title: "Custom color" });
+        sw.addEventListener("input", () => { lb.color = sw.value; save(); softRenderTable(board); });
+        sw.addEventListener("click", (e) => e.stopPropagation());
+        const inp = h("input", { class: "lbl-input", value: lb.label, placeholder: "Label name" });
+        inp.addEventListener("input", () => { lb.label = inp.value; });
+        inp.addEventListener("change", () => { save(); softRenderTable(board); });
+        inp.addEventListener("keydown", (e) => e.stopPropagation());
+        const del = h("button", { class: "row-act", title: "Delete label" });
+        del.append(ico("trash", 13));
+        del.addEventListener("click", (e) => { e.stopPropagation(); col.labels = col.labels.filter(x => x !== lb); save(); draw(); softRenderTable(board); });
+        host.append(h("div", { class: "lbl-row" }, sw, inp, del));
+      }
+    };
+    draw();
+    const add = h("button", { class: "dd-footer-btn", onclick: () => { col.labels.push({ id: uid(), label: "New Label", color: LABEL_PALETTE[col.labels.length % LABEL_PALETTE.length] }); save(); draw(); } }, "＋ Add label");
+    el.append(h("hr", { class: "dd-sep" }), add);
+  }, { minWidth: 270 });
 }
 
 /* ---------------- Render: task row ---------------- */
@@ -1682,6 +1978,7 @@ function taskRowEl(board, group, task, tpl, cols) {
     else if (c.id === "priority") row.append(priorityCellEl(task));
     else if (c.id === "updated") row.append(updatedCellEl(task));
   }
+  for (const col of board.columns) row.append(cellEditorEl(board, task, col));
 
   row.append(h("div", { class: "cell" }));
 
@@ -1778,6 +2075,7 @@ function statusPicker(anchor, taskId) {
           t.status = s.id;
           touch(t);
           save();
+          runWorkflows({ type: "status", task: t });
           close();
           softRender();
         },
@@ -1974,6 +2272,7 @@ function kanbanViewEl(board) {
       t.status = s.id;
       touch(t);
       save();
+      runWorkflows({ type: "status", task: t });
       render();
     });
     kb.append(col);
@@ -1991,6 +2290,14 @@ function kanbanCardEl(task, group) {
   if (task.priority !== "none") {
     const p = prioOf(task);
     meta.append(h("span", { class: "kb-prio", style: `background:${p.color}` }, p.label));
+  }
+  for (const col of getBoard().columns.slice(0, 3)) {
+    const v = task.cells[col.id];
+    if (v == null || v === "" || (Array.isArray(v) && !v.length)) continue;
+    if (col.type === "text" || col.type === "numbers") meta.append(h("span", {}, "· " + v));
+    else if (col.type === "date") meta.append(h("span", {}, "· " + fmtDate(v)));
+    else if (col.type === "status") { const lb = (col.labels || []).find(l => l.id === v); if (lb) meta.append(h("span", { class: "kb-prio", style: `background:${lb.color}` }, lb.label || "—")); }
+    else if (col.type === "dropdown") (v || []).map(id => (col.labels || []).find(l => l.id === id)).filter(Boolean).slice(0, 2).forEach(lb => meta.append(h("span", { class: "kb-prio", style: `background:${lb.color}` }, lb.label || "—")));
   }
   if (task.owners.length) {
     const stack = h("span", { class: "avatar-stack", style: "margin-left:auto" });
@@ -2185,13 +2492,29 @@ function donutEl(rows) {
 /* ---------------- Render: chart view ---------------- */
 
 function chartViewEl(board) {
-  const root = h("div", { class: "view-root chart-view" });
-  const tasks = allVisible(board);
-  root.append(chartCard("Status overview", donutEl(statusRows(tasks))));
-  root.append(chartCard("Tasks by status", barChart(statusRows(tasks))));
-  root.append(chartCard("Tasks by priority", barChart(priorityRows(tasks))));
-  const ownRows = state.people.map(p => ({ label: p.name.split(" ")[0], n: tasks.filter(t => t.owners.includes(p.id)).length, color: p.color }));
-  root.append(chartCard("Workload by person", barChart(ownRows)));
+  const root = h("div", { class: "view-root chart-view-single" });
+  const cfg = board.chartConfig;
+  const mkSel = (opts, cur, on) => {
+    const s = h("select", { style: "height:32px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);padding:0 8px" });
+    for (const o of opts) s.append(h("option", { value: o.id }, o.label));
+    s.value = cur;
+    s.addEventListener("change", () => on(s.value));
+    return s;
+  };
+  const toolbar = h("div", { class: "chart-toolbar" },
+    h("span", { class: "muted" }, "Chart type:"),
+    mkSel([{ id: "bar", label: "Bar" }, { id: "donut", label: "Donut" }, { id: "pie", label: "Pie" }, { id: "line", label: "Line" }], cfg.chartType, (v) => { cfg.chartType = v; save(); rerenderViewOnly(board); }));
+  if (cfg.chartType !== "line") toolbar.append(
+    h("span", { class: "muted", style: "margin-left:10px" }, "Data:"),
+    mkSel([{ id: "status", label: "By status" }, { id: "priority", label: "By priority" }, { id: "owner", label: "By owner" }, { id: "group", label: "By group" }], cfg.metric, (v) => { cfg.metric = v; save(); rerenderViewOnly(board); }));
+  root.append(toolbar);
+
+  const card = h("div", { class: "chart-card", style: "max-width:700px" });
+  card.append(h("h3", {}, "Chart"));
+  const body = h("div", {});
+  renderWidgetBody(board, { type: "chart", settings: { chartType: cfg.chartType, metric: cfg.metric } }, body);
+  card.append(body);
+  root.append(card);
   return root;
 }
 
@@ -2297,6 +2620,13 @@ function renderWidgetBody(board, w, body) {
   else if (ct === "line") body.append(lineChartEl(board));
 }
 
+function dashData(board) {
+  const ids = board.connectedBoards && board.connectedBoards.length ? board.connectedBoards : [board.id];
+  const groups = [];
+  for (const id of ids) { const b = state.boards.find(x => x.id === id); if (b) groups.push(...b.groups); }
+  return { groups, columns: [], view: "dashboard" };
+}
+
 function widgetEl(board, w) {
   const isLine = w.type === "chart" && w.settings.chartType === "line";
   const card = h("div", { class: "widget" + (isLine ? " wide" : ""), dataset: { widget: w.id } });
@@ -2310,7 +2640,7 @@ function widgetEl(board, w) {
   del.addEventListener("click", () => { board.widgets = board.widgets.filter(x => x.id !== w.id); save(); render(); toast("Widget removed"); });
   card.append(h("div", { class: "widget-head" }, ico(widgetIcon(w), 15), title, gear, del));
   const body = h("div", { class: "widget-body" });
-  renderWidgetBody(board, w, body);
+  renderWidgetBody(dashData(board), w, body);
   card.append(body);
   return card;
 }
@@ -2321,7 +2651,28 @@ function refreshWidget(board, w) {
   card.classList.toggle("wide", w.type === "chart" && w.settings.chartType === "line");
   const body = card.querySelector(".widget-body");
   body.replaceChildren();
-  renderWidgetBody(board, w, body);
+  renderWidgetBody(dashData(board), w, body);
+}
+
+function connectMenu(anchor, board) {
+  if (!board.connectedBoards || !board.connectedBoards.length) board.connectedBoards = [board.id];
+  openDropdown(anchor, (el) => {
+    el.append(h("div", { class: "dd-title" }, "Connect boards in this workspace"));
+    for (const b of wsBoards()) {
+      if (b.kind !== "board") continue;
+      const cb = h("input", { type: "checkbox" });
+      cb.checked = board.connectedBoards.includes(b.id);
+      const row = h("label", { class: "connect-row" }, cb, ico(b.icon || "table", 15), h("span", { style: "flex:1" }, b.name + (b.id === board.id ? " (this)" : "")));
+      cb.addEventListener("change", () => {
+        if (cb.checked) { if (!board.connectedBoards.includes(b.id)) board.connectedBoards.push(b.id); }
+        else board.connectedBoards = board.connectedBoards.filter(x => x !== b.id);
+        save();
+        rerenderViewOnly(board);
+        refreshDd();
+      });
+      el.append(row);
+    }
+  }, { minWidth: 260 });
 }
 
 function selectRow(label, options, current, onChange) {
@@ -2388,7 +2739,11 @@ function dashboardWidgetsEl(board) {
   const addBtn = h("button", { class: "btn-primary" });
   addBtn.append(ico("plus", 14), h("span", {}, "Add widget"));
   addBtn.addEventListener("click", () => addWidgetMenu(addBtn, board));
-  toolbar.append(addBtn, h("span", { class: "muted", style: "font-size:12px" }, "Click the gear on a widget to change chart type / data"));
+  const nConn = (board.connectedBoards && board.connectedBoards.length) || 1;
+  const connBtn = h("button", { class: "tb-btn connect" });
+  connBtn.append(ico("table", 15), h("span", {}, `${nConn} connected board${nConn > 1 ? "s" : ""}`));
+  connBtn.addEventListener("click", () => connectMenu(connBtn, board));
+  toolbar.append(addBtn, connBtn, h("span", { class: "muted", style: "font-size:12px" }, "Gear on a widget = change chart type / data"));
   root.append(toolbar);
 
   const canvas = h("div", { class: "widget-canvas" });
@@ -2558,21 +2913,20 @@ function docViewEl(board) {
 
 function galleryViewEl(board) {
   const root = h("div", { class: "view-root gallery-view" });
-  const tasks = allVisible(board);
-  if (!tasks.length) {
-    root.append(h("div", { class: "empty-board" }, "No items to show in the gallery yet."));
+  const files = [];
+  for (const t of allVisible(board)) for (const f of (t.files || [])) files.push({ f, t });
+  if (!files.length) {
+    root.append(h("div", { class: "empty-board", style: "padding-top:46px" },
+      h("div", { style: "font-size:42px;margin-bottom:10px" }, "🖼️"),
+      h("div", { style: "font-size:16px;color:var(--text);margin-bottom:6px" }, "No files were found."),
+      h("div", { class: "muted" }, "Open any item, scroll to Files and upload images — they'll appear here.")));
     return root;
   }
   const grid = h("div", { class: "gallery-grid" });
-  for (const t of tasks) {
-    const s = statusOf(t);
+  for (const { f, t } of files) {
     const card = h("div", { class: "gallery-card", onclick: () => { ui.panel = t.id; renderPanel(); } });
-    card.append(h("div", { class: "gallery-thumb", style: `background:${s.color}` }, initials(t.name || "?")));
-    const info = h("div", { class: "gallery-info" }, h("b", {}, t.name));
-    const meta = h("div", { class: "kb-meta" }, h("span", {}, s.label));
-    if (t.due) meta.append(h("span", {}, "· " + fmtDate(t.due)));
-    info.append(meta);
-    card.append(info);
+    card.append(h("div", { class: "gallery-thumb", style: "padding:0;background:var(--surface-2)" }, h("img", { src: f.dataURL, alt: f.name, style: "width:100%;height:100%;object-fit:cover" })));
+    card.append(h("div", { class: "gallery-info" }, h("b", {}, f.name), h("div", { class: "kb-meta" }, h("span", {}, t.name))));
     grid.append(card);
   }
   root.append(grid);
@@ -2641,6 +2995,25 @@ function whCollaborators() {
 
 function whContent(recents) {
   const wrap = h("div", {});
+
+  if (!wsBoards().length) {
+    wrap.append(h("h3", { style: "margin:18px 0 4px;font-size:18px" }, "Nothing to show here, yet"));
+    const cards = h("div", { class: "wh-empty-cards" });
+    const card = (thumbClass, thumbInner, label, onclick) => {
+      const c = h("div", { class: "wh-empty-card", onclick });
+      const thumb = h("div", { class: "wh-empty-thumb " + thumbClass });
+      if (thumbInner) thumb.append(thumbInner);
+      c.append(thumb, h("div", { class: "wh-empty-label" }, label));
+      return c;
+    };
+    cards.append(
+      card("", ico("plus", 34), "Add new board", () => addBoard({ name: "New Board" })),
+      card("solid", ico("table", 30), "Start with a template", () => addBoard({ name: "Campaign plan", views: ["table", "kanban", "calendar", "dashboard"], toast: "Template board created" })),
+      card("magic", h("span", { style: "font-size:11px;padding:0 10px;text-align:center" }, "I need a workspace that includes…"), "Start with magic AI", () => toast("Magic AI — coming soon in demo")));
+    wrap.append(cards);
+    return wrap;
+  }
+
   let filter = "";
 
   const tb = h("div", { class: "wh-toolbar" });
@@ -2684,6 +3057,106 @@ function whContent(recents) {
   return wrap;
 }
 
+/* ---------------- Workflow automations ---------------- */
+
+let wfRunning = false;
+
+function runWorkflows(ctx) {
+  if (wfRunning) return;
+  const boards = state.boards.filter(b => b.kind === "workflow" && b.workspaceId === state.activeWorkspace && Array.isArray(b.rules));
+  if (!boards.length) return;
+  wfRunning = true;
+  try {
+    for (const wb of boards) for (const r of wb.rules) {
+      if (!r.active) continue;
+      const matched =
+        (r.trigger.type === "created" && ctx.type === "created") ||
+        (r.trigger.type === "status" && ctx.type === "status" && ctx.task && ctx.task.status === r.trigger.value);
+      if (matched) applyWfAction(r.action, ctx.task);
+    }
+  } finally { wfRunning = false; }
+}
+
+function wfActionLabel(a) {
+  if (a.type === "setStatus") { const s = STATUSES.find(x => x.id === a.value); return `status → ${s ? s.label : "?"}`; }
+  if (a.type === "setPriority") { const p = PRIORITIES.find(x => x.id === a.value); return `priority → ${p ? p.label : "?"}`; }
+  return "notified";
+}
+
+function applyWfAction(a, task) {
+  if (!task) return;
+  if (a.type === "notify") toast(`⚡ ${task.name}: ${wfActionLabel(a)}`);
+  else if (a.type === "setStatus") { task.status = a.value; touch(task); save(); toast(`⚡ Workflow: ${task.name} → ${wfActionLabel(a)}`); }
+  else if (a.type === "setPriority") { task.priority = a.value; touch(task); save(); toast(`⚡ Workflow: ${task.name} → ${wfActionLabel(a)}`); }
+}
+
+function mkWfSelect(opts, cur, on) {
+  const s = h("select", {});
+  for (const o of opts) s.append(h("option", { value: o.id }, o.label));
+  s.value = cur;
+  s.addEventListener("change", () => on(s.value));
+  return s;
+}
+const wfToken = (sel, action) => h("span", { class: "wf-token" + (action ? " action" : "") }, sel);
+
+function addWorkflowRule(board) {
+  if (!Array.isArray(board.rules)) board.rules = [];
+  board.rules.push({ id: uid(), active: true, trigger: { type: "created" }, action: { type: "notify" } });
+  save();
+  rerenderViewOnly(board);
+}
+
+function workflowRuleEl(board, r) {
+  const card = h("div", { class: "wf-rule" });
+  const toggle = h("div", { class: "toggle-pill" + (r.active ? " on" : ""), title: "Active", onclick: () => { r.active = !r.active; save(); rerenderViewOnly(board); } });
+  const del = h("button", { class: "row-act", title: "Delete automation", onclick: () => { board.rules = board.rules.filter(x => x !== r); save(); rerenderViewOnly(board); } });
+  del.append(ico("trash", 14));
+  card.append(h("div", { class: "wf-rule-head" }, ico("bolt", 16), h("b", {}, "Automation"),
+    h("div", { class: "wf-status" }, r.active ? "Active" : "Inactive", toggle, del)));
+
+  const row = h("div", { class: "wf-rule-row" });
+  row.append(h("span", { class: "wf-when" }, "When"));
+  row.append(wfToken(mkWfSelect([{ id: "created", label: "an item is created" }, { id: "status", label: "a status changes to" }], r.trigger.type, (v) => { r.trigger.type = v; if (v === "status" && !r.trigger.value) r.trigger.value = STATUSES[1].id; save(); rerenderViewOnly(board); })));
+  if (r.trigger.type === "status") row.append(wfToken(mkWfSelect(STATUSES.map(s => ({ id: s.id, label: s.label })), r.trigger.value || STATUSES[1].id, (v) => { r.trigger.value = v; save(); })));
+
+  row.append(h("span", { class: "wf-when" }, "then"));
+  row.append(wfToken(mkWfSelect([{ id: "notify", label: "notify me" }, { id: "setStatus", label: "set status to" }, { id: "setPriority", label: "set priority to" }], r.action.type, (v) => { r.action.type = v; if (v === "setStatus" && !r.action.value) r.action.value = STATUSES[1].id; if (v === "setPriority" && !r.action.value) r.action.value = PRIORITIES[1].id; save(); rerenderViewOnly(board); }), true));
+  if (r.action.type === "setStatus") row.append(wfToken(mkWfSelect(STATUSES.map(s => ({ id: s.id, label: s.label })), r.action.value || STATUSES[1].id, (v) => { r.action.value = v; save(); }), true));
+  if (r.action.type === "setPriority") row.append(wfToken(mkWfSelect(PRIORITIES.filter(p => p.id !== "none").map(p => ({ id: p.id, label: p.label })), r.action.value || PRIORITIES[1].id, (v) => { r.action.value = v; save(); }), true));
+
+  card.append(row);
+  return card;
+}
+
+function workflowViewEl(board) {
+  const root = h("div", { class: "view-root wf-view" });
+  const canvas = h("div", { class: "wf-canvas" });
+  if (!Array.isArray(board.rules)) board.rules = [];
+  if (!board.rules.length) {
+    canvas.append(h("div", { class: "wf-trigger-card", onclick: () => addWorkflowRule(board) },
+      h("span", { class: "wf-trigger-ico" }, ico("bolt", 18)), h("span", {}, "Choose a trigger")));
+    canvas.append(h("div", { class: "muted", style: "text-align:center;margin-top:10px" }, "Build an automation: when something happens on this workspace, do something."));
+  } else {
+    for (const r of board.rules) canvas.append(workflowRuleEl(board, r));
+    canvas.append(h("div", { class: "wf-add", onclick: () => addWorkflowRule(board) }, "＋ Add another automation"));
+  }
+  root.append(canvas);
+  return root;
+}
+
+function workflowHeadEl(board) {
+  const title = h("span", { class: "board-title" }, board.name);
+  title.addEventListener("click", () => inlineEdit(title, board.name, (v) => { board.name = v; save(); render(); }, { style: "font-size:24px;font-weight:700" }));
+  const menuBtn = h("button", { class: "icon-btn", title: "Workflow menu" });
+  menuBtn.append(ico("dots", 17));
+  menuBtn.addEventListener("click", () => boardMenu(menuBtn, board));
+  const active = (board.rules || []).some(r => r.active);
+  return h("div", { class: "board-head" },
+    h("div", { class: "bh-top" }, h("span", { class: "ws-dd-logo", style: "background:#5559df" }, ico("workflow", 16)), title,
+      h("span", { class: "muted", style: "font-size:12px;margin-left:6px" }, active ? "Active" : "Inactive"),
+      h("div", { class: "bh-spacer" }), menuBtn));
+}
+
 /* ---------------- Render: bulk bar ---------------- */
 
 function renderBulk() {
@@ -2721,6 +3194,49 @@ function renderBulk() {
   root.append(bar);
 }
 
+/* ---------------- Rich text update editor ---------------- */
+
+function sanitizeHTML(html) {
+  return String(html)
+    .replace(/<\s*script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<\s*style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/ on\w+="[^"]*"/gi, "")
+    .replace(/ on\w+='[^']*'/gi, "")
+    .replace(/javascript:/gi, "");
+}
+
+function richEditor(onPost) {
+  const wrap = h("div", { class: "ip-composer" });
+  const area = h("div", { class: "rich-area", contenteditable: "true", "data-ph": "Write an update..." });
+  const cmd = (c, v) => { area.focus(); try { document.execCommand(c, false, v || null); } catch (e) {} };
+  const btn = (inner, c, title) => {
+    const b = h("button", { class: "rich-btn", title });
+    if (typeof inner === "string") b.innerHTML = inner; else b.append(inner);
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", () => cmd(c));
+    return b;
+  };
+  const toolbar = h("div", { class: "rich-toolbar" },
+    btn("<b>B</b>", "bold", "Bold"),
+    btn("<i>I</i>", "italic", "Italic"),
+    btn("<u>U</u>", "underline", "Underline"),
+    btn("<s>S</s>", "strikeThrough", "Strikethrough"),
+    h("span", { class: "rich-sep" }),
+    btn(ico("list", 15), "insertUnorderedList", "Bullet list"),
+    btn(ico("list", 15), "insertOrderedList", "Numbered list"));
+  const postBtn = h("button", { class: "btn-primary", style: "align-self:flex-end;margin-top:8px" }, "Update");
+  const post = () => {
+    const plain = (area.textContent || "").trim();
+    if (!plain) return;
+    onPost(sanitizeHTML(area.innerHTML.trim()), plain);
+    area.innerHTML = "";
+  };
+  postBtn.addEventListener("click", post);
+  area.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); post(); } });
+  wrap.append(toolbar, area, postBtn);
+  return wrap;
+}
+
 /* ---------------- Render: item panel ---------------- */
 
 function renderPanel() {
@@ -2729,7 +3245,7 @@ function renderPanel() {
   if (!ui.panel) return;
   const loc = locateTask(ui.panel);
   if (!loc) { ui.panel = null; return; }
-  const { task, group } = loc;
+  const { task, group, board } = loc;
 
   const panel = h("div", { class: "item-panel" });
 
@@ -2780,6 +3296,15 @@ function renderPanel() {
   fields.append(h("span", { class: "ip-label" }, "Last updated"),
     h("span", { class: "muted", style: "font-size:13px" }, `${relTime(task.updatedAt)} by ${personById(task.updatedBy)?.name || "?"}`));
 
+  // custom columns
+  if (board.columns.length) {
+    const cf = h("div", { class: "ip-fields" });
+    for (const col of board.columns) {
+      cf.append(h("span", { class: "ip-label" }, col.name), h("div", { class: "ip-cellwrap" }, cellEditorEl(board, task, col)));
+    }
+    panel.append(cf);
+  }
+
   panel.append(fields);
 
   // description
@@ -2792,25 +3317,36 @@ function renderPanel() {
   });
   panel.append(h("div", { class: "ip-section" }, h("h4", {}, "Description"), desc));
 
+  // files
+  const filesGrid = h("div", { class: "ip-files" });
+  for (const f of task.files) {
+    const x = h("button", { class: "ip-file-x", title: "Remove", onclick: () => { task.files = task.files.filter(y => y.id !== f.id); touch(task); save(); render(); } });
+    x.append(ico("x", 12));
+    filesGrid.append(h("div", { class: "ip-file", title: f.name }, h("img", { src: f.dataURL, alt: f.name }), x));
+  }
+  const fileIn = h("input", { type: "file", accept: "image/*", multiple: true, style: "display:none" });
+  fileIn.addEventListener("change", () => {
+    const files = [...fileIn.files];
+    let pending = files.length;
+    for (const file of files) scaleImage(file, (url) => {
+      task.files.push({ id: uid(), name: file.name, dataURL: url });
+      if (--pending === 0) { touch(task); save(); render(); toast(`${files.length} file(s) added`); }
+    });
+  });
+  const addFile = h("div", { class: "ip-file-add", onclick: () => fileIn.click() }, ico("plus", 18), h("span", {}, "Upload"));
+  filesGrid.append(addFile);
+  panel.append(h("div", { class: "ip-section" }, h("h4", {}, `Files (${task.files.length})`), filesGrid, fileIn));
+
   // updates
   const updates = h("div", { class: "ip-updates" });
   updates.append(h("h4", { style: "font-size:13px;color:var(--text-2)" }, `Updates (${task.updates.length})`));
 
-  const composer = h("div", { class: "ip-composer" });
-  const ta = h("textarea", { placeholder: "Write an update... (Ctrl+Enter to post)" });
-  const postBtn = h("button", { class: "btn-primary" }, "Update");
-  const post = () => {
-    const text = ta.value.trim();
-    if (!text) return;
-    task.updates.unshift({ id: uid(), by: state.user, text, at: Date.now() });
+  updates.append(richEditor((html, plain) => {
+    task.updates.unshift({ id: uid(), by: state.user, html, text: plain, at: Date.now() });
     touch(task);
     save();
     render();
-  };
-  postBtn.addEventListener("click", post);
-  ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.ctrlKey) post(); });
-  composer.append(ta, postBtn);
-  updates.append(composer);
+  }));
 
   for (const u of task.updates) {
     const author = personById(u.by);
@@ -2820,9 +3356,11 @@ function renderPanel() {
       render();
     } });
     del.append(ico("trash", 13));
+    const txt = h("div", { class: "update-text" });
+    if (u.html) txt.innerHTML = u.html; else txt.append(u.text || "");
     updates.append(h("div", { class: "update-card" },
       h("div", { class: "update-head" }, avatarEl(author, 24), h("b", {}, author ? author.name : "Unknown"), h("time", {}, relTime(u.at)), del),
-      h("div", { class: "update-text" }, u.text)));
+      txt));
   }
 
   panel.append(updates);

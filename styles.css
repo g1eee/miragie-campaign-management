@@ -1528,3 +1528,186 @@ input, textarea, select {
   outline: none;
 }
 .ws-set-row select:focus { border-color: var(--primary); }
+
+/* ============ Custom columns ============ */
+
+.col-head-cell .col-menu-btn { visibility: hidden; border-radius: 4px; padding: 2px; color: var(--text-2); display: inline-flex; }
+.col-head-cell:hover .col-menu-btn { visibility: visible; }
+.col-head-cell .col-menu-btn:hover { background: var(--surface-2); color: var(--text); }
+
+.dd-tag { color: #fff; font-size: 11px; border-radius: 4px; padding: 2px 8px; white-space: nowrap; }
+
+.addcol-menu .addcol-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.addcol-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.addcol-item:hover { background: var(--surface-2); }
+.addcol-ico { width: 26px; height: 26px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: #fff; flex: none; }
+
+.lbl-row { display: flex; align-items: center; gap: 8px; padding: 4px 2px; }
+.lbl-swatch { width: 26px; height: 26px; border: none; border-radius: 6px; padding: 0; cursor: pointer; background: none; flex: none; }
+.lbl-input { flex: 1; min-width: 0; height: 30px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); padding: 0 8px; outline: none; color: var(--text); }
+.lbl-input:focus { border-color: var(--primary); }
+
+.ip-cellwrap .cell { border: 1px solid var(--border); border-radius: 6px; min-height: 34px; padding: 0 8px; }
+.ip-cellwrap .cell.date-cell { justify-content: flex-start; }
+
+/* ============ Item panel: files ============ */
+
+.ip-files { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 8px; }
+.ip-file {
+  position: relative;
+  height: 86px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.ip-file img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ip-file .ip-file-x {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ip-file-add {
+  height: 86px;
+  border: 2px dashed var(--border-2);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 11px;
+}
+.ip-file-add:hover { background: var(--surface-2); color: var(--primary); border-color: var(--primary); }
+
+/* ============ Rich update editor ============ */
+
+.rich-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px; border: 1px solid var(--border); border-bottom: none; border-radius: 8px 8px 0 0; background: var(--surface); }
+.rich-btn { width: 28px; height: 28px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; color: var(--text); font-weight: 700; }
+.rich-btn:hover { background: var(--surface-2); }
+.rich-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+.rich-area {
+  min-height: 90px;
+  border: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+  padding: 10px 12px;
+  outline: none;
+  background: var(--bg);
+  overflow-wrap: anywhere;
+}
+.rich-area:focus { border-color: var(--primary); }
+.rich-area:empty::before { content: attr(data-ph); color: var(--text-2); }
+.update-text ul, .update-text ol { padding-left: 20px; }
+.update-text a { color: var(--primary); }
+
+/* ============ Empty workspace home ============ */
+
+.wh-empty-cards { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 18px; }
+.wh-empty-card {
+  width: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+.wh-empty-thumb {
+  width: 180px;
+  height: 120px;
+  border-radius: 12px;
+  border: 2px dashed var(--border-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  background: var(--surface);
+}
+.wh-empty-thumb.solid { border-style: solid; border-color: var(--border); }
+.wh-empty-thumb.magic { border: none; background: linear-gradient(135deg, #7b61ff, #00c2ff 60%, #b06ab3); color: #fff; }
+.wh-empty-card:hover .wh-empty-thumb { border-color: var(--primary); }
+.wh-empty-label { font-weight: 500; font-size: 14px; }
+.side-empty { padding: 24px 10px; text-align: center; color: var(--text-2); }
+.side-empty b { display: block; color: var(--text); margin-bottom: 6px; }
+
+/* ============ Connect boards (dashboard) ============ */
+
+.tb-btn.connect { border: 1px solid var(--border-2); }
+.connect-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+.connect-row:hover { background: var(--surface-2); }
+.connect-row input { accent-color: var(--primary); width: 15px; height: 15px; }
+
+/* ============ Workflow builder ============ */
+
+.wf-view { flex: 1; overflow: auto; background:
+  radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 22px 22px;
+  padding: 40px;
+}
+.wf-canvas { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.wf-rule {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  padding: 14px 16px;
+}
+.wf-rule-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; line-height: 2; }
+.wf-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+.wf-token.action { background: rgba(0, 200, 117, 0.14); color: #00854d; }
+.wf-token select { border: none; background: none; color: inherit; font: inherit; font-weight: 600; outline: none; cursor: pointer; }
+.wf-when { font-weight: 700; color: var(--text-2); }
+.wf-rule-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.wf-rule-head .wf-status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.wf-add {
+  border: 2px dashed var(--border-2);
+  border-radius: 12px;
+  padding: 22px;
+  text-align: center;
+  color: var(--text-2);
+  cursor: pointer;
+  background: var(--bg);
+}
+.wf-add:hover { border-color: var(--primary); color: var(--primary); }
+.wf-trigger-card {
+  background: var(--bg);
+  border: 2px dashed var(--primary);
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 16px;
+}
+.wf-trigger-ico { width: 36px; height: 36px; border-radius: 9px; background: #00c875; color: #fff; display: flex; align-items: center; justify-content: center; flex: none; }
+.toggle-pill { width: 38px; height: 20px; border-radius: 12px; background: var(--border-2); position: relative; cursor: pointer; flex: none; }
+.toggle-pill.on { background: #00c875; }
+.toggle-pill::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+.toggle-pill.on::after { left: 20px; }
+
+/* ============ Chart view edit ============ */
+
+.chart-view-single { padding: 18px 32px 60px; flex: 1; overflow: auto; }
+.chart-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
