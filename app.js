@@ -1243,6 +1243,7 @@ function renderMain() {
 }
 
 function viewBodyEl(board) {
+  if (board.kind === "workflow") return workflowViewEl(board);
   switch (board.view) {
     case "table":     return tableViewEl(board);
     case "kanban":    return kanbanViewEl(board);
@@ -3564,7 +3565,7 @@ function wfSettingsPanel(board) {
       body.append(wfField("Date column", wfSelectF(dateCols, c.dateCol || "due", (v) => { c.dateCol = v; reRun(); }), true));
       body.append(wfField("Date setup", wfSelectF([{ id: "0", label: "When the date arrives" }, { id: "1", label: "1 day before" }, { id: "2", label: "2 days before" }, { id: "7", label: "1 week before" }], String(c.offset || 0), (v) => { c.offset = Number(v); reRun(); })));
       body.append(wfField("Time", wfSelectF(["7:30 AM", "9:00 AM", "12:00 PM", "5:00 PM"].map(t => ({ id: t, label: t })), c.time || "9:00 AM", (v) => { c.time = v; reRun(); })));
-      body.append(h("div", { class: "muted", style: "font-size:11px;margin-top:6px" }, "Time-based triggers are configured here; live firing needs a scheduler (next step)."));
+      body.append(h("div", { class: "muted", style: "font-size:11px;margin-top:6px" }, "Checked every 30s while the app is open. Fires once per item per date."));
     }
   } else if (node.kind === "action") {
     if (node.type === "change_status") body.append(wfField("Set status to", wfSelectF(STATUSES.map(s => ({ id: s.id, label: s.label })), c.value || STATUSES[1].id, (v) => { c.value = v; reRun(); }), true));
