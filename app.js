@@ -102,6 +102,11 @@ const PATHS = {
   template: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
   apps: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   filterFunnel: '<path d="M4 5h16l-6.5 7.5V19l-3-1.5v-5L4 5z"/>',
+  numbers: '<path d="M9 4L7 20M17 4l-2 16M5 9h15M4 15h15"/>',
+  battery: '<rect x="2.5" y="8" width="16" height="8" rx="2"/><path d="M21 11v2"/><rect x="4.5" y="10" width="8" height="4" rx="1" fill="currentColor" stroke="none"/>',
+  pie: '<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M12 3v9h9A9 9 0 0 0 12 3z" opacity="0.55"/>',
+  line: '<path d="M4 5v14h16"/><path d="M7 14l4-4 3 3 5-6"/>',
+  widget: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>',
 };
 
 function ico(name, size = 16) {
@@ -218,13 +223,27 @@ function load() {
 
 // Backfill fields added in later versions so old localStorage keeps working.
 function migrate() {
-  if (!state.workspace) state.workspace = { name: "Main workspace", desc: "" };
+  if (!Array.isArray(state.workspaces)) {
+    const old = state.workspace || {};
+    state.workspaces = [{ id: "w1", name: old.name || "Main workspace", desc: old.desc || "", color: "#00854d", letter: "M" }];
+    state.activeWorkspace = "w1";
+  }
+  if (!state.activeWorkspace || !state.workspaces.find(w => w.id === state.activeWorkspace)) {
+    state.activeWorkspace = state.workspaces[0].id;
+  }
+  for (const w of state.workspaces) {
+    if (!w.color) w.color = "#00854d";
+    if (!w.letter) w.letter = (w.name[0] || "W").toUpperCase();
+    if (w.desc == null) w.desc = "";
+  }
   for (const p of state.people) if (!("avatar" in p)) p.avatar = null;
   for (const b of state.boards) {
+    if (!b.workspaceId) b.workspaceId = state.workspaces[0].id;
     if (!Array.isArray(b.views)) b.views = ["table", "kanban", "calendar"];
     if (!b.view || !b.views.includes(b.view)) b.view = b.views[0] || "table";
     if (!b.hidden) b.hidden = [];
     if (b.doc == null) b.doc = "";
+    if (!Array.isArray(b.widgets)) b.widgets = [];
     if (!b.createdAt) b.createdAt = Date.now();
     if (!b.creator) b.creator = state.user || "u1";
     if (!b.icon) b.icon = "table";
@@ -255,8 +274,10 @@ function seed() {
     view: "table",
     views: ["table", "calendar", "kanban"],
     icon: "table",
+    workspaceId: "w1",
     hidden: [],
     doc: "",
+    widgets: [],
     creator: "u1",
     createdAt: Date.now(),
     groups: [
@@ -278,8 +299,15 @@ function seed() {
     view: "table",
     views: ["table", "dashboard", "chart"],
     icon: "dashboard",
+    workspaceId: "w1",
     hidden: [],
     doc: "",
+    widgets: [
+      { id: uid(), type: "numbers", title: "Total tasks", settings: { metric: "total" } },
+      { id: uid(), type: "chart", title: "Status overview", settings: { chartType: "donut", metric: "status" } },
+      { id: uid(), type: "chart", title: "Tasks by priority", settings: { chartType: "bar", metric: "priority" } },
+      { id: uid(), type: "battery", title: "Status battery", settings: { metric: "status" } },
+    ],
     creator: "u1",
     createdAt: Date.now(),
     groups: [
@@ -300,7 +328,8 @@ function seed() {
   return {
     theme: "light",
     user: "u1",
-    workspace: { name: "Main workspace", desc: "" },
+    workspaces: [{ id: "w1", name: "Main workspace", desc: "", color: "#00854d", letter: "M" }],
+    activeWorkspace: "w1",
     people: [
       { id: "u1", name: "Gie", color: "#0073ea", avatar: null },
       { id: "u2", name: "Andi Pratama", color: "#a25ddc", avatar: null },
@@ -312,7 +341,9 @@ function seed() {
   };
 }
 
-const getBoard = () => state.boards.find(b => b.id === state.activeBoard) || state.boards[0];
+const getWorkspace = () => state.workspaces.find(w => w.id === state.activeWorkspace) || state.workspaces[0];
+const wsBoards = () => state.boards.filter(b => b.workspaceId === state.activeWorkspace);
+const getBoard = () => state.boards.find(b => b.id === state.activeBoard) || wsBoards()[0] || state.boards[0];
 const personById = (id) => state.people.find(p => p.id === id);
 const me = () => personById(state.user) || state.people[0];
 
@@ -371,6 +402,7 @@ document.addEventListener("mousedown", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (openDd) { closeDropdowns(); return; }
+    if (q("#modal-root").firstChild) { closeModal(); return; }
     if (ui.panel) { ui.panel = null; renderPanel(); }
   }
 });
@@ -387,6 +419,146 @@ function toast(msg, undoFn) {
   t.append(x);
   q("#toasts").append(t);
   setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 350); }, undoFn ? 8000 : 4000);
+}
+
+/* ---------------- Modal ---------------- */
+
+function closeModal() {
+  const root = q("#modal-root");
+  if (root) root.replaceChildren();
+}
+
+function openModal(build) {
+  closeDropdowns();
+  const root = q("#modal-root");
+  const overlay = h("div", { class: "modal-overlay" });
+  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeModal(); });
+  const card = h("div", { class: "modal-card" });
+  build(card, closeModal);
+  overlay.append(card);
+  root.replaceChildren(overlay);
+}
+
+function modalPrompt(title, placeholder, value, onOk) {
+  openModal((card, close) => {
+    const input = h("input", { class: "modal-title-in", style: "font-size:18px", value, placeholder });
+    card.append(h("div", { class: "modal-head" }, input));
+    const ok = h("button", { class: "btn-primary" }, "Create");
+    const submit = () => { const v = input.value.trim(); if (!v) { input.focus(); return; } close(); onOk(v); };
+    ok.addEventListener("click", submit);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") close(); });
+    card.append(h("div", { class: "modal-foot" }, h("button", { class: "modal-cancel", onclick: close }, "Cancel"), ok));
+    setTimeout(() => { input.focus(); input.select(); }, 0);
+  });
+}
+
+function newItemModal(board, group, prefill = {}) {
+  openModal((card, close) => {
+    const data = {
+      name: prefill.name || "",
+      groupId: (group || board.groups[0] || {}).id,
+      owners: new Set(prefill.owners || []),
+      status: prefill.status || "none",
+      due: prefill.due || "",
+      priority: prefill.priority || "none",
+    };
+
+    const titleIn = h("input", { class: "modal-title-in", placeholder: "New Item", value: data.name });
+    titleIn.addEventListener("input", () => data.name = titleIn.value);
+    const closeBtn = h("button", { class: "icon-btn", onclick: close });
+    closeBtn.append(ico("x", 16));
+    card.append(h("div", { class: "modal-head" }, titleIn, closeBtn));
+
+    const body = h("div", { class: "modal-body" });
+
+    const field = (icon, iconColor, label, control) => h("div", { class: "mi-field" },
+      h("div", { class: "mi-label" }, h("span", { class: "mi-ico", style: `background:${iconColor}` }, ico(icon, 13)), h("span", {}, label)),
+      h("div", { class: "mi-control" }, control));
+
+    // Group
+    const groupBtn = h("button", { class: "mi-plain" });
+    const drawGroup = () => { const g = board.groups.find(x => x.id === data.groupId) || board.groups[0]; groupBtn.replaceChildren(h("span", { class: "kb-dot", style: `background:${g ? g.color : "#999"}` }), h("span", {}, g ? g.name : "—")); };
+    drawGroup();
+    groupBtn.addEventListener("click", () => openDropdown(groupBtn, (dd, c) => {
+      for (const g of board.groups) dd.append(ddItem(null, g.name, () => { data.groupId = g.id; drawGroup(); c(); }));
+    }, { minWidth: 200 }));
+    body.append(field("kanban", "#00c875", "Group", groupBtn));
+
+    // Owner
+    const ownerBtn = h("button", { class: "mi-plain muted" });
+    const drawOwner = () => {
+      const owners = [...data.owners].map(personById).filter(Boolean);
+      ownerBtn.classList.toggle("muted", !owners.length);
+      if (!owners.length) ownerBtn.replaceChildren(ico("personPlus", 15), h("span", {}, "Assign"));
+      else { const stack = h("span", { class: "avatar-stack" }); owners.slice(0, 3).forEach(p => stack.append(avatarEl(p, 22))); ownerBtn.replaceChildren(stack, h("span", {}, owners.map(p => p.name.split(" ")[0]).join(", "))); }
+    };
+    drawOwner();
+    ownerBtn.addEventListener("click", () => openDropdown(ownerBtn, (dd) => {
+      dd.append(h("div", { class: "dd-title" }, "Assign people"));
+      for (const p of state.people) {
+        const has = data.owners.has(p.id);
+        dd.append(h("div", { class: "dd-item", onclick: () => { has ? data.owners.delete(p.id) : data.owners.add(p.id); drawOwner(); refreshDd(); } },
+          avatarEl(p, 24), h("span", { style: "flex:1" }, p.name), has ? ico("check", 14) : null));
+      }
+    }, { minWidth: 220 }));
+    body.append(field("person", "#0086c0", "Owner", ownerBtn));
+
+    // Status
+    const statusBtn = h("button", { class: "mi-pill" });
+    const drawStatus = () => { const s = STATUSES.find(x => x.id === data.status) || STATUSES[3]; statusBtn.style.background = s.color; statusBtn.textContent = s.label; };
+    drawStatus();
+    statusBtn.addEventListener("click", () => openDropdown(statusBtn, (dd, c) => {
+      for (const s of STATUSES) dd.append(h("div", { class: "dd-color", style: `background:${s.color}`, onclick: () => { data.status = s.id; drawStatus(); c(); } }, s.label));
+    }, { minWidth: 170 }));
+    body.append(field("kanban", "#00c875", "Status", statusBtn));
+
+    // Due date
+    const dateBtn = h("button", { class: "mi-plain" + (data.due ? "" : " muted") });
+    const drawDate = () => { dateBtn.replaceChildren(ico("calendar", 15), h("span", {}, data.due ? fmtDate(data.due) : "+ Add date")); dateBtn.classList.toggle("muted", !data.due); };
+    drawDate();
+    dateBtn.addEventListener("click", () => openDropdown(dateBtn, (dd, c) => {
+      const input = h("input", { type: "date", value: data.due });
+      input.addEventListener("change", () => { data.due = input.value; drawDate(); c(); });
+      const todayB = h("button", { onclick: () => { data.due = todayISO(); drawDate(); c(); } }, "Today");
+      const clr = h("button", { onclick: () => { data.due = ""; drawDate(); c(); } }, "Clear");
+      dd.append(h("div", { class: "date-pop" }, input, h("div", { class: "date-pop-row" }, todayB, clr)));
+    }, { minWidth: 220 }));
+    body.append(field("calendar", "#a25ddc", "Due date", dateBtn));
+
+    // Priority
+    const prioBtn = h("button", { class: "mi-pill" });
+    const drawPrio = () => { const p = PRIORITIES.find(x => x.id === data.priority) || PRIORITIES[4]; prioBtn.style.background = p.color; prioBtn.textContent = p.label || "—"; };
+    drawPrio();
+    prioBtn.addEventListener("click", () => openDropdown(prioBtn, (dd, c) => {
+      for (const p of PRIORITIES) dd.append(h("div", { class: "dd-color", style: `background:${p.color}`, onclick: () => { data.priority = p.id; drawPrio(); c(); } }, p.label || "—"));
+    }, { minWidth: 170 }));
+    body.append(field("chart", "#5559df", "Priority", prioBtn));
+
+    card.append(body);
+
+    const createBtn = h("button", { class: "btn-primary" }, "Create Task");
+    const submit = () => {
+      if (!data.name.trim()) { toast("Please enter an item name"); titleIn.focus(); return; }
+      let g = board.groups.find(x => x.id === data.groupId) || board.groups[0];
+      if (!g) { addGroup(board); g = board.groups[0]; }
+      const t = addTask(g, data.name.trim(), true);
+      t.owners = [...data.owners];
+      t.status = data.status;
+      t.due = data.due;
+      t.priority = data.priority;
+      touch(t);
+      g.collapsed = false;
+      save();
+      close();
+      render();
+      toast(`"${t.name}" added to ${g.name}`);
+    };
+    createBtn.addEventListener("click", submit);
+    titleIn.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+    card.append(h("div", { class: "modal-foot" }, h("button", { class: "modal-cancel", onclick: close }, "Cancel"), createBtn));
+
+    setTimeout(() => { titleIn.focus(); titleIn.select(); }, 0);
+  });
 }
 
 /* ---------------- Inline editing ---------------- */
@@ -521,8 +693,10 @@ function addBoard(opts = {}) {
     view: opts.view || views[0],
     views,
     icon: opts.icon || "table",
+    workspaceId: opts.workspaceId || state.activeWorkspace,
     hidden: [],
     doc: "",
+    widgets: [],
     creator: state.user,
     createdAt: Date.now(),
     groups: [
@@ -533,6 +707,77 @@ function addBoard(opts = {}) {
   switchBoard(b.id);
   toast(opts.toast || "Board created");
   return b;
+}
+
+/* ---------------- Workspaces ---------------- */
+
+const WS_COLORS = ["#00854d", "#0073ea", "#a25ddc", "#e2445c", "#fdab3d", "#0086c0", "#ff642e", "#9d50dd"];
+
+function switchWorkspace(id) {
+  if (state.activeWorkspace === id) { openHome(); return; }
+  state.activeWorkspace = id;
+  const first = wsBoards()[0];
+  state.activeBoard = first ? first.id : null;
+  ui.home = true;
+  resetBoardUi();
+  save();
+  render();
+}
+
+function addWorkspace() {
+  modalPrompt("Create workspace", "Workspace name", "", (name) => {
+    const color = WS_COLORS[state.workspaces.length % WS_COLORS.length];
+    const w = { id: uid(), name, desc: "", color, letter: (name[0] || "W").toUpperCase() };
+    state.workspaces.push(w);
+    state.activeWorkspace = w.id;
+    const b = {
+      id: uid(), name: "Getting started", desc: "Your first board in this workspace.",
+      view: "table", views: ["table", "kanban", "calendar"], icon: "table",
+      workspaceId: w.id, hidden: [], doc: "", widgets: [], creator: state.user, createdAt: Date.now(),
+      groups: [{ id: uid(), name: "To-Do", color: "#579bfc", collapsed: false, tasks: [] }],
+    };
+    state.boards.push(b);
+    state.activeBoard = b.id;
+    ui.home = true;
+    resetBoardUi();
+    save();
+    render();
+    toast(`Workspace "${name}" created`);
+  });
+}
+
+function workspaceMenu(anchor) {
+  openDropdown(anchor, (el, close) => {
+    const searchWrap = h("div", { class: "side-search", style: "margin:2px 0 8px" });
+    const si = h("input", { type: "text", placeholder: "Search for a workspace" });
+    searchWrap.append(ico("search", 14), si);
+    el.append(searchWrap);
+
+    const listHost = h("div", {});
+    el.append(listHost);
+    const draw = () => {
+      listHost.replaceChildren();
+      const f = si.value.toLowerCase();
+      const matches = state.workspaces.filter(w => w.name.toLowerCase().includes(f));
+      listHost.append(h("div", { class: "ws-dd-section" }, "My workspaces"));
+      for (const w of matches) {
+        const active = w.id === state.activeWorkspace;
+        const it = h("div", { class: "dd-item" + (active ? "" : ""), style: active ? "background:var(--primary-selected)" : "", onclick: () => { close(); switchWorkspace(w.id); } },
+          h("span", { class: "ws-dd-logo", style: `background:${w.color}` }, w.letter),
+          h("span", { style: "flex:1" }, w.name),
+          active ? ico("check", 14) : null);
+        listHost.append(it);
+      }
+      if (!matches.length) listHost.append(h("div", { class: "dd-item disabled" }, "No workspaces found"));
+    };
+    si.addEventListener("input", draw);
+    si.addEventListener("keydown", (e) => e.stopPropagation());
+    draw();
+
+    el.append(h("hr", { class: "dd-sep" }));
+    el.append(ddItem("plus", "Add workspace", () => { close(); addWorkspace(); }));
+    el.append(ddItem("apps", "Browse all", () => { close(); toast("Browse all — coming soon in demo"); }));
+  }, { minWidth: 260 });
 }
 
 function regenIds(board) {
@@ -556,16 +801,21 @@ function duplicateBoard(board) {
 }
 
 function deleteBoard(board) {
-  if (state.boards.length <= 1) { toast("Workspace needs at least one board"); return; }
   const idx = state.boards.indexOf(board);
+  if (idx < 0) return;
   state.boards.splice(idx, 1);
-  if (state.activeBoard === board.id) state.activeBoard = state.boards[Math.max(0, idx - 1)].id;
+  if (state.activeBoard === board.id) {
+    const next = wsBoards()[0];
+    if (next) { state.activeBoard = next.id; ui.home = false; }
+    else { state.activeBoard = null; ui.home = true; }
+  }
   resetBoardUi();
   save();
   render();
   toast(`Board "${board.name}" deleted`, () => {
     state.boards.splice(Math.min(idx, state.boards.length), 0, board);
     state.activeBoard = board.id;
+    ui.home = false;
     save();
     render();
   });
@@ -690,8 +940,10 @@ function renderSidebar() {
   const collapseBtn = h("button", { class: "icon-btn", title: ui.sideCollapsed ? "Expand" : "Collapse", onclick: () => { ui.sideCollapsed = !ui.sideCollapsed; renderSidebar(); } });
   collapseBtn.append(ico(ui.sideCollapsed ? "expand" : "collapse", 15));
 
-  const wsChip = h("div", { class: "ws-chip", title: "Open workspace home", onclick: () => openHome() },
-    h("span", { class: "ws-logo" }, "M"), h("span", {}, state.workspace.name));
+  const w = getWorkspace();
+  const wsChip = h("div", { class: "ws-chip", title: "Switch workspace" },
+    h("span", { class: "ws-logo", style: `background:${w.color}` }, w.letter), h("span", {}, w.name), ui.sideCollapsed ? null : ico("chevDown", 14));
+  wsChip.addEventListener("click", () => workspaceMenu(wsChip));
 
   const addNewBtn = h("button", { class: "ws-add", title: "Add new" });
   addNewBtn.append(ico("plus", 16));
@@ -736,7 +988,7 @@ function renderSidebar() {
 function renderBoardList(list) {
   list.replaceChildren();
   const filter = ui.sideSearch.toLowerCase();
-  for (const b of state.boards) {
+  for (const b of wsBoards()) {
     if (filter && !b.name.toLowerCase().includes(filter)) continue;
     const menuBtn = h("button", { class: "item-menu", title: "Board menu" });
     menuBtn.append(ico("dots", 14));
@@ -819,7 +1071,16 @@ function renderMain() {
   if (ui.home) { main.append(workspaceHomeEl()); return; }
 
   const board = getBoard();
-  if (!board) return;
+  if (!board) {
+    const empty = h("div", { class: "empty-board" },
+      h("div", { style: "font-size:16px;margin-bottom:10px;color:var(--text)" }, "This workspace has no boards yet"));
+    const b = h("button", { class: "btn-primary", style: "margin:0 auto" });
+    b.append(ico("plus", 14), h("span", {}, "Add board"));
+    b.addEventListener("click", () => addBoard({ name: "New Board" }));
+    empty.append(b);
+    main.append(h("div", { style: "padding:60px" }, empty));
+    return;
+  }
 
   main.append(boardHeadEl(board));
   // Toolbar only for data views; doc/form/dashboard/chart/gantt have their own chrome.
@@ -834,7 +1095,7 @@ function viewBodyEl(board) {
     case "calendar":  return calendarViewEl(board);
     case "gantt":     return ganttViewEl(board);
     case "chart":     return chartViewEl(board);
-    case "dashboard": return dashboardViewEl(board);
+    case "dashboard": return dashboardWidgetsEl(board);
     case "form":      return formViewEl(board);
     case "doc":       return docViewEl(board);
     case "gallery":   return galleryViewEl(board);
@@ -864,7 +1125,7 @@ function boardHeadEl(board) {
   const tabs = h("div", { class: "tabs" });
   for (const vid of board.views) {
     const vm = viewMeta(vid);
-    const tab = h("button", { class: "tab" + (board.view === vid ? " active" : ""), onclick: () => { board.view = vid; save(); render(); } });
+    const tab = h("button", { class: "tab" + (board.view === vid ? " active" : ""), draggable: "true", title: "Drag to reorder", onclick: () => { board.view = vid; save(); render(); } });
     tab.append(ico(vm.icon, 14), h("span", {}, viewTab(vid)));
     if (board.views.length > 1) {
       const x = h("span", { class: "tab-x", title: "Remove view" });
@@ -872,6 +1133,7 @@ function boardHeadEl(board) {
       x.addEventListener("click", (e) => { e.stopPropagation(); removeView(board, vid); });
       tab.append(x);
     }
+    attachTabDnd(tab, board, vid);
     tabs.append(tab);
   }
   const plusTab = h("button", { class: "tab", title: "Add view" });
@@ -913,6 +1175,42 @@ function addView(board, vid) {
   board.view = vid;
   save();
   render();
+}
+
+function attachTabDnd(tab, board, vid) {
+  tab.addEventListener("dragstart", (e) => {
+    ui.drag = { type: "tab", vid };
+    e.dataTransfer.effectAllowed = "move";
+    tab.classList.add("tab-dragging");
+  });
+  tab.addEventListener("dragend", () => {
+    ui.drag = null;
+    document.querySelectorAll(".tab-dragging,.tab-drop-left,.tab-drop-right").forEach(x => x.classList.remove("tab-dragging", "tab-drop-left", "tab-drop-right"));
+  });
+  tab.addEventListener("dragover", (e) => {
+    if (!ui.drag || ui.drag.type !== "tab" || ui.drag.vid === vid) return;
+    e.preventDefault();
+    const r = tab.getBoundingClientRect();
+    const after = e.clientX > r.left + r.width / 2;
+    tab.classList.toggle("tab-drop-right", after);
+    tab.classList.toggle("tab-drop-left", !after);
+  });
+  tab.addEventListener("dragleave", () => tab.classList.remove("tab-drop-left", "tab-drop-right"));
+  tab.addEventListener("drop", (e) => {
+    if (!ui.drag || ui.drag.type !== "tab") return;
+    e.preventDefault();
+    const r = tab.getBoundingClientRect();
+    const after = e.clientX > r.left + r.width / 2;
+    const from = board.views.indexOf(ui.drag.vid);
+    ui.drag = null;
+    if (from < 0) return;
+    const moved = board.views.splice(from, 1)[0];
+    let to = board.views.indexOf(vid);
+    if (after) to++;
+    board.views.splice(to, 0, moved);
+    save();
+    render();
+  });
 }
 
 function removeView(board, vid) {
@@ -973,18 +1271,8 @@ function toolbarEl(board) {
   const newBtn = h("button", { class: "btn-primary" });
   newBtn.append(h("span", {}, "New task"), ico("chevDown", 13));
   newBtn.addEventListener("click", () => {
-    let g = board.groups[0];
-    if (!g) { addGroup(board); return; }
-    if (board.groups.length > 1) {
-      openDropdown(newBtn, (el, close) => {
-        el.append(h("div", { class: "dd-title" }, "Add task to group"));
-        for (const gr of board.groups) {
-          el.append(ddItem(null, gr.name, () => { close(); newTaskIn(board, gr); }));
-        }
-      });
-    } else {
-      newTaskIn(board, g);
-    }
+    if (!board.groups.length) addGroup(board);
+    newItemModal(board, board.groups[0], {});
   });
   bar.append(newBtn);
 
@@ -1768,6 +2056,12 @@ function calendarViewEl(board) {
     const dayNum = h("div", { class: "cal-daynum" }, iso === today ? h("b", {}, d.getDate()) : String(d.getDate()));
     cell.append(dayNum);
 
+    const addBtn = h("button", { class: "cal-add", title: "Add task on this day" });
+    addBtn.append(ico("plus", 13));
+    addBtn.addEventListener("click", (e) => { e.stopPropagation(); newItemModal(board, board.groups[0], { due: iso }); });
+    cell.append(addBtn);
+    cell.addEventListener("click", (e) => { if (e.target === cell || e.target === dayNum) newItemModal(board, board.groups[0], { due: iso }); });
+
     const tasks = byDate.get(iso) || [];
     tasks.slice(0, 3).forEach(t => {
       const s = statusOf(t);
@@ -1903,30 +2197,214 @@ function chartViewEl(board) {
 
 /* ---------------- Render: dashboard view ---------------- */
 
-function dashboardViewEl(board) {
-  const root = h("div", { class: "view-root dash-view" });
+/* ---------------- Dashboard: editable widget canvas ---------------- */
+
+function widgetMetricRows(board, metric) {
   const tasks = allVisible(board);
-  const done = tasks.filter(t => t.status === "done").length;
-  const working = tasks.filter(t => t.status === "working").length;
-  const overdue = tasks.filter(t => t.due && t.status !== "done" && t.due < todayISO()).length;
+  if (metric === "priority") return priorityRows(tasks);
+  if (metric === "owner") return state.people.map(p => ({ label: p.name.split(" ")[0], n: tasks.filter(t => t.owners.includes(p.id)).length, color: p.color }));
+  if (metric === "group") return board.groups.map(g => ({ label: g.name, n: visibleTasks(g).length, color: g.color }));
+  return statusRows(tasks);
+}
 
-  const kpi = (num, label, accent) => {
-    const c = h("div", { class: "kpi-card" + (accent ? " accent" : ""), style: accent ? `background:${accent}` : "" });
-    c.append(h("div", { class: "kpi-num" }, String(num)),
-      h("div", { class: "kpi-label", style: accent ? "color:rgba(255,255,255,.88)" : "" }, label));
-    return c;
+function widgetIcon(w) { return w.type === "numbers" ? "numbers" : w.type === "battery" ? "battery" : "chart"; }
+
+function pieEl(rows) {
+  const vis = rows.filter(r => r.n > 0);
+  const total = vis.reduce((a, b) => a + b.n, 0) || 1;
+  const cx = 70, cy = 70, R = 62;
+  let inner;
+  if (vis.length === 1) inner = `<circle cx="${cx}" cy="${cy}" r="${R}" fill="${vis[0].color}"/>`;
+  else if (!vis.length) inner = `<circle cx="${cx}" cy="${cy}" r="${R}" style="fill:var(--surface-2)"/>`;
+  else {
+    let ang = -Math.PI / 2;
+    inner = vis.map(r => {
+      const frac = r.n / total, a2 = ang + frac * 2 * Math.PI;
+      const x1 = cx + R * Math.cos(ang), y1 = cy + R * Math.sin(ang);
+      const x2 = cx + R * Math.cos(a2), y2 = cy + R * Math.sin(a2);
+      const large = frac > 0.5 ? 1 : 0;
+      const d = `M${cx} ${cy} L${x1.toFixed(2)} ${y1.toFixed(2)} A${R} ${R} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`;
+      ang = a2;
+      return `<path d="${d}" fill="${r.color}"/>`;
+    }).join("");
+  }
+  const wrap = h("div", { class: "pie-wrap" });
+  const svg = h("div", { class: "donut" });
+  svg.innerHTML = `<svg width="148" height="148" viewBox="0 0 140 140">${inner}</svg>`;
+  const legend = h("div", { class: "donut-legend" });
+  rows.forEach(r => legend.append(h("div", {}, h("span", { class: "legend-dot", style: `background:${r.color}` }), h("span", {}, r.label || "—"), h("span", { class: "muted", style: "margin-left:4px" }, String(r.n)))));
+  wrap.append(svg, legend);
+  return wrap;
+}
+
+function lineChartEl(board) {
+  const tasks = allVisible(board).filter(t => t.due);
+  if (!tasks.length) return h("div", { class: "muted" }, "No dated tasks to plot over time.");
+  const map = new Map();
+  tasks.forEach(t => { const k = t.due.slice(0, 7); map.set(k, (map.get(k) || 0) + 1); });
+  const pts = [...map.keys()].sort().map(k => ({ k, n: map.get(k) }));
+  const W = 560, H = 210, padL = 30, padB = 28, padT = 16, padR = 16;
+  const maxN = Math.max(...pts.map(p => p.n), 1);
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const stepX = pts.length > 1 ? innerW / (pts.length - 1) : 0;
+  const xy = pts.map((p, i) => [padL + (pts.length > 1 ? i * stepX : innerW / 2), padT + innerH - (p.n / maxN) * innerH]);
+  const poly = xy.map(c => c.map(n => n.toFixed(1)).join(",")).join(" ");
+  const dots = xy.map(c => `<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="4" style="fill:var(--primary)"/>`).join("");
+  const labels = pts.map((p, i) => `<text x="${xy[i][0].toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="10" style="fill:var(--text-2)">${MONTHS[Number(p.k.split("-")[1]) - 1]}</text>`).join("");
+  const axis = `<line x1="${padL}" y1="${padT + innerH}" x2="${W - padR}" y2="${padT + innerH}" style="stroke:var(--border)"/>`;
+  const el = h("div", { style: "width:100%" });
+  el.innerHTML = `<svg width="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${axis}<polyline points="${poly}" fill="none" style="stroke:var(--primary)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${dots}${labels}</svg>`;
+  return el;
+}
+
+function numbersWidget(board, w) {
+  const tasks = allVisible(board);
+  const M = {
+    total: ["Total tasks", tasks.length, "var(--text)"],
+    done: ["Completed", tasks.filter(t => t.status === "done").length, "#00c875"],
+    working: ["In progress", tasks.filter(t => t.status === "working").length, "#fdab3d"],
+    stuck: ["Stuck", tasks.filter(t => t.status === "stuck").length, "#e2445c"],
+    overdue: ["Overdue", tasks.filter(t => t.due && t.status !== "done" && t.due < todayISO()).length, "#e2445c"],
   };
-  const kpis = h("div", { class: "dash-kpis" },
-    kpi(tasks.length, "Total tasks"),
-    kpi(done, "Completed", "#00c875"),
-    kpi(working, "In progress", "#fdab3d"),
-    kpi(overdue, "Overdue", "#e2445c"));
-  root.append(kpis);
+  const [label, num, color] = M[w.settings.metric] || M.total;
+  return h("div", { class: "numbers-widget" }, h("div", { class: "nw-num", style: `color:${color}` }, String(num)), h("div", { class: "nw-label" }, label));
+}
 
-  const charts = h("div", { class: "dash-charts" },
-    chartCard("Status breakdown", donutEl(statusRows(tasks))),
-    chartCard("Tasks by priority", barChart(priorityRows(tasks))));
-  root.append(charts);
+function batteryWidget(board, w) {
+  const kind = w.settings.metric === "priority" ? "priority" : "status";
+  const tasks = allVisible(board);
+  const wrap = h("div", { style: "width:100%" });
+  const bat = batteryEl(tasks, kind);
+  bat.style.height = "34px";
+  wrap.append(bat);
+  const defs = kind === "status" ? STATUSES : PRIORITIES;
+  const legend = h("div", { class: "donut-legend", style: "margin-top:16px;flex-direction:row;flex-wrap:wrap;gap:14px" });
+  defs.forEach(d => { const n = tasks.filter(t => (kind === "status" ? t.status : t.priority) === d.id).length; if (!n) return; legend.append(h("div", {}, h("span", { class: "legend-dot", style: `background:${d.color}` }), h("span", {}, `${d.label || "—"} ${n}`))); });
+  wrap.append(legend);
+  return wrap;
+}
+
+function renderWidgetBody(board, w, body) {
+  body.className = "widget-body";
+  if (w.type === "numbers") { body.append(numbersWidget(board, w)); return; }
+  if (w.type === "battery") { body.classList.add("bars"); body.append(batteryWidget(board, w)); return; }
+  // chart
+  const ct = w.settings.chartType || "bar";
+  const rows = widgetMetricRows(board, w.settings.metric);
+  if (ct === "bar") { body.classList.add("bars"); body.append(barChart(rows)); }
+  else if (ct === "donut") body.append(donutEl(rows));
+  else if (ct === "pie") body.append(pieEl(rows));
+  else if (ct === "line") body.append(lineChartEl(board));
+}
+
+function widgetEl(board, w) {
+  const isLine = w.type === "chart" && w.settings.chartType === "line";
+  const card = h("div", { class: "widget" + (isLine ? " wide" : ""), dataset: { widget: w.id } });
+  const title = h("div", { class: "widget-title", title: "Click to rename" }, w.title);
+  title.addEventListener("click", () => inlineEdit(title, w.title, (v) => { w.title = v; save(); render(); }));
+  const gear = h("button", { class: "widget-act", title: "Settings" });
+  gear.append(ico("gear", 15));
+  gear.addEventListener("click", () => widgetSettings(gear, board, w));
+  const del = h("button", { class: "widget-act", title: "Remove widget" });
+  del.append(ico("x", 15));
+  del.addEventListener("click", () => { board.widgets = board.widgets.filter(x => x.id !== w.id); save(); render(); toast("Widget removed"); });
+  card.append(h("div", { class: "widget-head" }, ico(widgetIcon(w), 15), title, gear, del));
+  const body = h("div", { class: "widget-body" });
+  renderWidgetBody(board, w, body);
+  card.append(body);
+  return card;
+}
+
+function refreshWidget(board, w) {
+  const card = document.querySelector(`[data-widget="${w.id}"]`);
+  if (!card) { rerenderViewOnly(board); return; }
+  card.classList.toggle("wide", w.type === "chart" && w.settings.chartType === "line");
+  const body = card.querySelector(".widget-body");
+  body.replaceChildren();
+  renderWidgetBody(board, w, body);
+}
+
+function selectRow(label, options, current, onChange) {
+  const row = h("div", { class: "ws-set-row" });
+  row.append(h("label", {}, label));
+  const sel = h("select", {});
+  for (const o of options) sel.append(h("option", { value: o.id }, o.label));
+  sel.value = current;
+  sel.addEventListener("change", () => onChange(sel.value));
+  sel.addEventListener("keydown", (e) => e.stopPropagation());
+  row.append(sel);
+  return row;
+}
+
+function widgetSettings(anchor, board, w) {
+  openDropdown(anchor, (el) => {
+    el.append(h("div", { class: "dd-title" }, "Widget settings"));
+    if (w.type === "chart") {
+      el.append(selectRow("Chart type", [{ id: "bar", label: "Bar chart" }, { id: "donut", label: "Donut" }, { id: "pie", label: "Pie" }, { id: "line", label: "Line" }], w.settings.chartType || "bar", (v) => { w.settings.chartType = v; save(); refreshWidget(board, w); refreshDd(); }));
+      if ((w.settings.chartType || "bar") !== "line") {
+        el.append(selectRow("Data", [{ id: "status", label: "By status" }, { id: "priority", label: "By priority" }, { id: "owner", label: "By owner" }, { id: "group", label: "By group" }], w.settings.metric || "status", (v) => { w.settings.metric = v; save(); refreshWidget(board, w); }));
+      }
+    } else if (w.type === "numbers") {
+      el.append(selectRow("Metric", [{ id: "total", label: "Total tasks" }, { id: "done", label: "Completed" }, { id: "working", label: "In progress" }, { id: "stuck", label: "Stuck" }, { id: "overdue", label: "Overdue" }], w.settings.metric || "total", (v) => { w.settings.metric = v; save(); refreshWidget(board, w); }));
+    } else if (w.type === "battery") {
+      el.append(selectRow("Group by", [{ id: "status", label: "Status" }, { id: "priority", label: "Priority" }], w.settings.metric || "status", (v) => { w.settings.metric = v; save(); refreshWidget(board, w); }));
+    }
+  }, { minWidth: 230 });
+}
+
+const WIDGET_TYPES = [
+  { type: "chart", icon: "chart", name: "Chart", desc: "Bar, pie, line or donut from your board", title: "Status overview", def: { chartType: "bar", metric: "status" } },
+  { type: "numbers", icon: "numbers", name: "Numbers", desc: "A single key metric at a glance", title: "Total tasks", def: { metric: "total" } },
+  { type: "battery", icon: "battery", name: "Battery", desc: "Your progress at a glance", title: "Status battery", def: { metric: "status" } },
+];
+
+function addWidgetMenu(anchor, board) {
+  openDropdown(anchor, (el, close) => {
+    el.classList.add("add-widget-menu");
+    el.append(h("div", { class: "dd-title" }, "Add widget"));
+    for (const t of WIDGET_TYPES) {
+      const it = h("div", { class: "dd-item", onclick: () => {
+        close();
+        board.widgets.push({ id: uid(), type: t.type, title: t.title, settings: { ...t.def } });
+        save();
+        render();
+        toast(`${t.name} widget added`);
+      } }, h("span", { class: "aw-ico" }, ico(t.icon, 16)), h("div", { class: "aw-text" }, h("b", {}, t.name), h("span", {}, t.desc)));
+      el.append(it);
+    }
+    el.append(h("hr", { class: "dd-sep" }));
+    for (const [icon, label] of [["vibe", "Vibe app"], ["gantt", "Gantt"], ["gallery", "Files Gallery"]]) {
+      const it = ddItem(icon, label, () => { close(); toast(`${label} widget — coming soon in demo`); }, "soon");
+      it.append(h("span", { class: "dd-badge" }, "Soon"));
+      el.append(it);
+    }
+  }, { minWidth: 280 });
+}
+
+function dashboardWidgetsEl(board) {
+  const root = h("div", { class: "view-root", style: "flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0" });
+
+  const toolbar = h("div", { class: "widget-toolbar" });
+  const addBtn = h("button", { class: "btn-primary" });
+  addBtn.append(ico("plus", 14), h("span", {}, "Add widget"));
+  addBtn.addEventListener("click", () => addWidgetMenu(addBtn, board));
+  toolbar.append(addBtn, h("span", { class: "muted", style: "font-size:12px" }, "Click the gear on a widget to change chart type / data"));
+  root.append(toolbar);
+
+  const canvas = h("div", { class: "widget-canvas" });
+  if (!board.widgets.length) {
+    const empty = h("div", { class: "widget-empty" });
+    empty.append(h("div", { style: "font-size:16px;margin-bottom:8px;color:var(--text)" }, "No widgets yet"),
+      h("div", { class: "muted", style: "margin-bottom:16px" }, "Add a chart, number or battery to visualize this board."));
+    const eb = h("button", { class: "btn-primary", style: "margin:0 auto" });
+    eb.append(ico("plus", 14), h("span", {}, "Add widget"));
+    eb.addEventListener("click", () => addWidgetMenu(eb, board));
+    empty.append(eb);
+    canvas.append(empty);
+  } else {
+    for (const w of board.widgets) canvas.append(widgetEl(board, w));
+  }
+  root.append(canvas);
   return root;
 }
 
@@ -2104,18 +2582,19 @@ function galleryViewEl(board) {
 /* ---------------- Render: workspace home ---------------- */
 
 function workspaceHomeEl() {
+  const w = getWorkspace();
   const root = h("div", { class: "view-root wh" });
   root.append(h("div", { class: "wh-banner" }));
   const body = h("div", { class: "wh-body" });
 
-  const logo = h("div", { class: "wh-logo" }, "M", h("span", { class: "wh-home-badge" }, ico("home", 16)));
+  const logo = h("div", { class: "wh-logo", style: `background:${w.color}` }, w.letter, h("span", { class: "wh-home-badge" }, ico("home", 16)));
 
-  const name = h("div", { class: "wh-name" }, state.workspace.name);
-  name.addEventListener("click", () => inlineEdit(name, state.workspace.name, (v) => { state.workspace.name = v; save(); render(); }, { style: "font-size:26px;font-weight:700" }));
+  const name = h("div", { class: "wh-name" }, w.name);
+  name.addEventListener("click", () => inlineEdit(name, w.name, (v) => { w.name = v; w.letter = (v[0] || "W").toUpperCase(); save(); render(); }, { style: "font-size:26px;font-weight:700" }));
   const titleRow = h("div", { class: "wh-title-row" }, name, ico("chevDown", 18));
 
-  const desc = h("div", { class: "wh-desc" + (state.workspace.desc ? "" : " muted") }, state.workspace.desc || "Add workspace description");
-  desc.addEventListener("click", () => inlineEdit(desc, state.workspace.desc, (v) => { state.workspace.desc = v; save(); render(); }));
+  const desc = h("div", { class: "wh-desc" + (w.desc ? "" : " muted") }, w.desc || "Add workspace description");
+  desc.addEventListener("click", () => inlineEdit(desc, w.desc, (v) => { w.desc = v; save(); render(); }));
 
   const titles = h("div", { class: "wh-titles" }, titleRow, desc);
 
@@ -2184,8 +2663,8 @@ function whContent(recents) {
 
   const drawTable = () => {
     tbody.replaceChildren();
-    let boards = state.boards.slice();
-    if (recents) boards.sort((a, b) => boardModified(b) - boardModified(a));
+    let boards = wsBoards();
+    if (recents) boards = boards.slice().sort((a, b) => boardModified(b) - boardModified(a));
     for (const b of boards) {
       if (filter && !b.name.toLowerCase().includes(filter)) continue;
       const creator = personById(b.creator) || me();

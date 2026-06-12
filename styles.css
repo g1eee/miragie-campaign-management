@@ -1347,3 +1347,184 @@ input, textarea, select {
 }
 .profile-name-big { font-weight: 700; font-size: 15px; }
 .profile-mail { color: var(--text-2); font-size: 12px; }
+
+/* ============ Modal ============ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal-card {
+  width: 600px;
+  max-width: 94vw;
+  max-height: 88vh;
+  background: var(--bg);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideUp 0.18s ease;
+}
+@keyframes slideUp { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+.modal-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 0; }
+.modal-title-in {
+  flex: 1;
+  font-size: 22px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--surface);
+  outline: none;
+  color: var(--text);
+}
+.modal-title-in:focus { border-color: var(--primary); background: var(--bg); }
+.modal-body { padding: 14px 16px; overflow-y: auto; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--border); }
+.modal-cancel { padding: 0 14px; height: 36px; border-radius: 6px; }
+.modal-cancel:hover { background: var(--surface-2); }
+
+.mi-field { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.mi-field:last-child { border-bottom: none; }
+.mi-label { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 13px; }
+.mi-label .mi-ico { width: 22px; height: 22px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; color: #fff; flex: none; }
+.mi-control { min-width: 0; }
+.mi-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+.mi-plain {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  background: var(--surface);
+}
+.mi-plain:hover { background: var(--surface-2); }
+.mi-plain.muted { color: var(--text-2); }
+
+/* ============ View tab dragging ============ */
+
+.tab[draggable="true"] { cursor: grab; }
+.tab.tab-dragging { opacity: 0.4; }
+.tab.tab-drop-left { box-shadow: inset 3px 0 0 var(--primary); }
+.tab.tab-drop-right { box-shadow: inset -3px 0 0 var(--primary); }
+
+/* ============ Workspace switcher dropdown ============ */
+
+.ws-chip { cursor: pointer; }
+.ws-dd-logo { width: 24px; height: 24px; border-radius: 6px; color: #fff; font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.ws-dd-section { font-size: 12px; color: var(--text-2); font-weight: 600; padding: 8px 10px 4px; }
+
+/* ============ Calendar add affordance ============ */
+
+.cal-cell { position: relative; }
+.cal-add {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+.cal-cell:hover .cal-add { display: inline-flex; }
+
+/* ============ Dashboard widgets ============ */
+
+.widget-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 32px 0; }
+.widget-canvas {
+  padding: 14px 32px 80px;
+  flex: 1;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 16px;
+  align-content: start;
+}
+.widget {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  min-height: 240px;
+}
+.widget.wide { grid-column: span 2; }
+.widget-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.widget-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: text;
+}
+.widget-title:hover { outline: 1px dashed var(--border-2); }
+.widget-act { padding: 4px; border-radius: 4px; color: var(--text-2); display: inline-flex; }
+.widget-act:hover { background: var(--surface-2); color: var(--text); }
+.widget-body { flex: 1; padding: 16px; display: flex; align-items: center; justify-content: center; }
+.widget-body.bars { align-items: stretch; flex-direction: column; justify-content: center; }
+.widget-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-2);
+  padding: 50px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+}
+
+.numbers-widget { text-align: center; }
+.numbers-widget .nw-num { font-size: 56px; font-weight: 800; line-height: 1; }
+.numbers-widget .nw-label { color: var(--text-2); margin-top: 8px; }
+
+.pie-wrap { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; justify-content: center; }
+
+.add-widget-menu .dd-item { gap: 12px; }
+.add-widget-menu .aw-ico { width: 30px; height: 30px; border-radius: 7px; background: var(--surface-2); display: inline-flex; align-items: center; justify-content: center; color: var(--primary); flex: none; }
+.add-widget-menu .aw-text b { display: block; font-size: 13px; }
+.add-widget-menu .aw-text span { font-size: 11px; color: var(--text-2); }
+
+/* settings popover rows */
+.ws-set-row { padding: 6px 4px; }
+.ws-set-row label { display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
+.ws-set-row select {
+  width: 100%;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 8px;
+  outline: none;
+}
+.ws-set-row select:focus { border-color: var(--primary); }
