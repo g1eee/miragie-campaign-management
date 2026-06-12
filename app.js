@@ -210,6 +210,7 @@ const ui = {
   drag: null,            // {type:'task'|'card'|'chip', taskId}
   home: false,           // workspace home view
   homeTab: "content",    // recents | content | collaborators | permissions
+  wfSel: null,           // selected workflow node id ("trigger" | stepId)
 };
 
 let cloudTimer = null;
@@ -309,6 +310,7 @@ function migrate() {
     if (!b.createdAt) b.createdAt = Date.now();
     if (!b.creator) b.creator = state.user || "u1";
     if (!b.icon) b.icon = "table";
+    if (b.kind === "workflow" && !b.flow) b.flow = { active: false, trigger: null, steps: [] };
     for (const g of b.groups || []) for (const t of g.tasks) {
       if (!t.cells) t.cells = {};
       if (!Array.isArray(t.files)) t.files = [];
@@ -951,6 +953,7 @@ function resetBoardUi() {
   ui.sort = null;
   ui.search = "";
   ui.cal = null;
+  ui.wfSel = null;
   const gs = q("#global-search");
   if (gs) gs.value = "";
 }
@@ -1123,7 +1126,7 @@ function addNewMenu(anchor) {
     el.append(ddItem("table", "Board", () => { close(); addBoard({ name: "New Board" }); }));
     el.append(ddItem("dashboard", "Dashboard", () => {
       close();
-      addBoard({ name: "New Dashboard", icon: "dashboard", view: "dashboard", views: ["table", "dashboard", "chart"], toast: "Dashboard created" });
+      addBoard({ name: "New Dashboard", icon: "dashboard", view: "dashboard", views: ["dashboard"], kind: "dashboard", toast: "Dashboard created" });
     }));
     el.append(ddItem("doc", "Doc", () => {
       close();
@@ -2709,25 +2712,47 @@ function refreshWidget(board, w) {
   renderWidgetBody(dashData(board), w, body);
 }
 
-function connectMenu(anchor, board) {
-  if (!board.connectedBoards || !board.connectedBoards.length) board.connectedBoards = [board.id];
-  openDropdown(anchor, (el) => {
-    el.append(h("div", { class: "dd-title" }, "Connect boards in this workspace"));
-    for (const b of wsBoards()) {
-      if (b.kind !== "board") continue;
-      const cb = h("input", { type: "checkbox" });
-      cb.checked = board.connectedBoards.includes(b.id);
-      const row = h("label", { class: "connect-row" }, cb, ico(b.icon || "table", 15), h("span", { style: "flex:1" }, b.name + (b.id === board.id ? " (this)" : "")));
-      cb.addEventListener("change", () => {
-        if (cb.checked) { if (!board.connectedBoards.includes(b.id)) board.connectedBoards.push(b.id); }
-        else board.connectedBoards = board.connectedBoards.filter(x => x !== b.id);
-        save();
-        rerenderViewOnly(board);
-        refreshDd();
-      });
-      el.append(row);
-    }
-  }, { minWidth: 260 });
+function connectBoardsModal(board) {
+  const sel = new Set(board.connectedBoards || []);
+  const candidates = wsBoards().filter(b => b.kind === "board" && b.id !== board.id);
+  openModal((card, close) => {
+    const closeBtn = h("button", { class: "icon-btn", onclick: close });
+    closeBtn.append(ico("x", 16));
+    card.append(h("div", { class: "modal-head", style: "flex-direction:column;align-items:stretch;gap:2px;position:relative" },
+      h("div", { style: "display:flex;align-items:center" }, h("div", { style: "flex:1;font-size:20px;font-weight:700" }, "Connect boards to this dashboard"), closeBtn),
+      h("div", { class: "muted", style: "font-size:13px" }, "You can always change this later")));
+
+    const body = h("div", { class: "modal-body" });
+    const searchWrap = h("div", { class: "board-search-wrap", style: "border:1px solid var(--border);width:100%;margin-bottom:12px" });
+    const si = h("input", { type: "text", placeholder: "Search by Board name", style: "width:100%" });
+    searchWrap.append(ico("search", 15), si);
+    body.append(searchWrap);
+    body.append(h("div", { class: "dd-title", style: "padding-left:0" }, "Recently Used"));
+    const list = h("div", {});
+    body.append(list);
+
+    const draw = () => {
+      list.replaceChildren();
+      const f = si.value.toLowerCase();
+      const rows = candidates.filter(b => b.name.toLowerCase().includes(f));
+      if (!rows.length) { list.append(h("div", { class: "muted", style: "padding:12px 0" }, "No boards to connect in this workspace.")); return; }
+      for (const b of rows) {
+        const cb = h("input", { type: "checkbox" });
+        cb.checked = sel.has(b.id);
+        cb.addEventListener("change", () => { cb.checked ? sel.add(b.id) : sel.delete(b.id); });
+        list.append(h("label", { class: "connect-row", style: "border-bottom:1px solid var(--border)" }, cb,
+          ico(b.icon || "table", 16),
+          h("div", { style: "display:flex;flex-direction:column" }, h("span", {}, b.name), h("span", { class: "muted", style: "font-size:11px" }, getWorkspace().name + " Workspace"))));
+      }
+    };
+    si.addEventListener("input", draw);
+    draw();
+    card.append(body);
+
+    const done = h("button", { class: "btn-primary" }, "Done");
+    done.addEventListener("click", () => { board.connectedBoards = [...sel]; save(); close(); render(); });
+    card.append(h("div", { class: "modal-foot" }, h("button", { class: "modal-cancel", onclick: close }, "Cancel"), done));
+  });
 }
 
 function selectRow(label, options, current, onChange) {
@@ -2794,20 +2819,30 @@ function dashboardWidgetsEl(board) {
   const addBtn = h("button", { class: "btn-primary" });
   addBtn.append(ico("plus", 14), h("span", {}, "Add widget"));
   addBtn.addEventListener("click", () => addWidgetMenu(addBtn, board));
-  const nConn = (board.connectedBoards && board.connectedBoards.length) || 1;
   const connBtn = h("button", { class: "tb-btn connect" });
-  connBtn.append(ico("table", 15), h("span", {}, `${nConn} connected board${nConn > 1 ? "s" : ""}`));
-  connBtn.addEventListener("click", () => connectMenu(connBtn, board));
+  connBtn.append(ico("table", 15), h("span", {}, "Connect boards"));
+  connBtn.addEventListener("click", () => connectBoardsModal(board));
   toolbar.append(addBtn, connBtn, h("span", { class: "muted", style: "font-size:12px" }, "Gear on a widget = change chart type / data"));
   root.append(toolbar);
 
   const canvas = h("div", { class: "widget-canvas" });
   if (!board.widgets.length) {
-    const empty = h("div", { class: "widget-empty" });
-    empty.append(h("div", { style: "font-size:16px;margin-bottom:8px;color:var(--text)" }, "No widgets yet"),
-      h("div", { class: "muted", style: "margin-bottom:16px" }, "Add a chart, number or battery to visualize this board."));
-    const eb = h("button", { class: "btn-primary", style: "margin:0 auto" });
-    eb.append(ico("plus", 14), h("span", {}, "Add widget"));
+    const empty = h("div", { class: "widget-empty dash-hero" });
+    const art = h("div", { class: "dash-hero-art" });
+    art.innerHTML = `<svg width="240" height="150" viewBox="0 0 240 150" fill="none">
+      <rect x="14" y="20" width="150" height="112" rx="10" fill="var(--bg)" stroke="var(--border)"/>
+      <text x="30" y="42" font-size="11" font-weight="700" style="fill:var(--text)">Dashboard</text>
+      <rect x="30" y="54" width="56" height="34" rx="5" fill="var(--surface-2)"/>
+      <rect x="36" y="62" width="34" height="4" rx="2" fill="#fdab3d"/><rect x="36" y="70" width="44" height="4" rx="2" fill="#0073ea"/><rect x="36" y="78" width="24" height="4" rx="2" fill="#00c875"/>
+      <circle cx="124" cy="71" r="17" fill="#00c875"/><path d="M124 71 L124 54 A17 17 0 0 1 139 79 Z" fill="#fdab3d"/><path d="M124 71 L139 79 A17 17 0 0 1 110 80 Z" fill="#5559df"/>
+      <rect x="30" y="98" width="26" height="24" rx="4" fill="#e2445c"/><rect x="62" y="98" width="26" height="24" rx="4" fill="#5559df"/>
+      <rect x="96" y="98" width="58" height="24" rx="4" fill="var(--surface-2)"/><text x="125" y="114" font-size="10" text-anchor="middle" font-weight="700" style="fill:var(--text-2)">$375M</text>
+      <path d="M164 40 H196 M164 71 H210 M164 102 H196" stroke="var(--border-2)" stroke-width="1.5"/>
+      <rect x="196" y="32" width="34" height="16" rx="3" fill="var(--surface-2)"/><rect x="210" y="63" width="22" height="16" rx="3" fill="var(--surface-2)"/><rect x="196" y="94" width="34" height="16" rx="3" fill="var(--surface-2)"/></svg>`;
+    empty.append(art,
+      h("div", { style: "font-size:20px;font-weight:700;margin-top:14px;color:var(--text)" }, "Visualize data from multiple boards"),
+      h("div", { class: "muted", style: "margin:6px 0 18px" }, "Use charts, timelines, and other widgets to get insights from all of your boards at once"));
+    const eb = h("button", { class: "btn-primary", style: "margin:0 auto" }, "Add your first widget");
     eb.addEventListener("click", () => addWidgetMenu(eb, board));
     empty.append(eb);
     canvas.append(empty);
@@ -3112,103 +3147,343 @@ function whContent(recents) {
   return wrap;
 }
 
-/* ---------------- Workflow automations ---------------- */
+/* ================= Workflow: step-based automation builder ================= */
+
+const WF_TRIGGERS = [
+  { type: "date_arrives",   icon: "clock",   label: "When date arrives" },
+  { type: "item_created",   icon: "plus",    label: "When an item is created" },
+  { type: "status_changes", icon: "kanban",  label: "When a status changes to something" },
+  { type: "item_updated",   icon: "pencil",  label: "When an item is updated" },
+  { type: "column_changes", icon: "table",   label: "When a column changes" },
+];
+
+const WF_ACTIONS = [
+  { type: "create_item",   icon: "plus",    label: "Create item",        cat: "Featured" },
+  { type: "change_status", icon: "kanban",  label: "Change status",      cat: "Featured" },
+  { type: "move_group",    icon: "open",    label: "Move item to group", cat: "Featured" },
+  { type: "set_priority",  icon: "chart",   label: "Change priority",    cat: "Columns" },
+  { type: "notify",        icon: "bell",    label: "Notify me",          cat: "Communication" },
+];
+
+const wfTrigMeta = (t) => WF_TRIGGERS.find(x => x.type === t) || WF_TRIGGERS[1];
+const wfActMeta = (t) => WF_ACTIONS.find(x => x.type === t) || WF_ACTIONS[4];
+const statusLabel = (id) => (STATUSES.find(s => s.id === id) || {}).label || "—";
+const prioLabel = (id) => (PRIORITIES.find(p => p.id === id) || {}).label || "—";
+
+function ensureFlow(board) { if (!board.flow) board.flow = { active: false, trigger: null, steps: [] }; }
+
+/* ---- execution engine ---- */
 
 let wfRunning = false;
 
 function runWorkflows(ctx) {
   if (wfRunning) return;
-  const boards = state.boards.filter(b => b.kind === "workflow" && b.workspaceId === state.activeWorkspace && Array.isArray(b.rules));
-  if (!boards.length) return;
+  const loc = ctx.task ? locateTask(ctx.task.id) : null;
+  const srcBoard = loc ? loc.board : null;
+  const wfBoards = state.boards.filter(b => b.kind === "workflow" && b.workspaceId === state.activeWorkspace && b.flow && b.flow.active && b.flow.trigger);
+  if (!wfBoards.length) return;
+  const events = ctx.type === "created" ? ["item_created"] : ctx.type === "status" ? ["status_changes", "item_updated"] : ["column_changes", "item_updated"];
   wfRunning = true;
   try {
-    for (const wb of boards) for (const r of wb.rules) {
-      if (!r.active) continue;
-      const matched =
-        (r.trigger.type === "created" && ctx.type === "created") ||
-        (r.trigger.type === "status" && ctx.type === "status" && ctx.task && ctx.task.status === r.trigger.value);
-      if (matched) applyWfAction(r.action, ctx.task);
+    for (const wb of wfBoards) {
+      const tr = wb.flow.trigger;
+      const cfg = tr.config || {};
+      if (cfg.boardId && srcBoard && cfg.boardId !== srcBoard.id) continue;
+      if (!events.includes(tr.type)) continue;
+      if (tr.type === "status_changes" && cfg.statusValue && cfg.statusValue !== "any" && ctx.task.status !== cfg.statusValue) continue;
+      if (tr.type === "column_changes" && cfg.colId && ctx.col && cfg.colId !== ctx.col.id) continue;
+      runFlowSteps(wb, ctx.task);
     }
   } finally { wfRunning = false; }
 }
 
-function wfActionLabel(a) {
-  if (a.type === "setStatus") { const s = STATUSES.find(x => x.id === a.value); return `status → ${s ? s.label : "?"}`; }
-  if (a.type === "setPriority") { const p = PRIORITIES.find(x => x.id === a.value); return `priority → ${p ? p.label : "?"}`; }
-  return "notified";
+function evalCondition(step, task) {
+  const c = step.config || {};
+  if (c.field === "priority") return task.priority === c.value;
+  return task.status === c.value;
 }
 
-function applyWfAction(a, task) {
-  if (!task) return;
-  if (a.type === "notify") toast(`⚡ ${task.name}: ${wfActionLabel(a)}`);
-  else if (a.type === "setStatus") { task.status = a.value; touch(task); save(); toast(`⚡ Workflow: ${task.name} → ${wfActionLabel(a)}`); }
-  else if (a.type === "setPriority") { task.priority = a.value; touch(task); save(); toast(`⚡ Workflow: ${task.name} → ${wfActionLabel(a)}`); }
+function runFlowSteps(wb, task) {
+  for (const step of wb.flow.steps) {
+    if (step.kind === "condition") { if (!evalCondition(step, task)) return; }
+    else if (step.kind === "wait") { /* time-based: no-op in a static app */ }
+    else if (step.kind === "action") applyFlowAction(step, task);
+  }
 }
 
-function mkWfSelect(opts, cur, on) {
-  const s = h("select", {});
-  for (const o of opts) s.append(h("option", { value: o.id }, o.label));
-  s.value = cur;
-  s.addEventListener("change", () => on(s.value));
-  return s;
+function applyFlowAction(step, task) {
+  const c = step.config || {};
+  if (step.type === "change_status") { task.status = c.value || "done"; touch(task); save(); toast(`⚡ ${task.name}: status → ${statusLabel(task.status)}`); }
+  else if (step.type === "set_priority") { task.priority = c.value || "high"; touch(task); save(); toast(`⚡ ${task.name}: priority → ${prioLabel(task.priority)}`); }
+  else if (step.type === "move_group") {
+    const loc = locateTask(task.id);
+    if (loc && c.groupId) { const g = loc.board.groups.find(x => x.id === c.groupId); if (g && g !== loc.group) { loc.group.tasks.splice(loc.idx, 1); g.tasks.push(task); save(); toast(`⚡ ${task.name} → ${g.name}`); } }
+  }
+  else if (step.type === "notify") toast(`⚡ ${c.message || task.name}`);
+  else if (step.type === "create_item") {
+    const loc = locateTask(task.id); const board = loc ? loc.board : null;
+    if (board) { const g = board.groups.find(x => x.id === c.groupId) || board.groups[0]; if (g) { g.tasks.push(mkTask(c.name || "New item", { by: state.user })); save(); toast(`⚡ Created "${c.name || "New item"}"`); } }
+  }
 }
-const wfToken = (sel, action) => h("span", { class: "wf-token" + (action ? " action" : "") }, sel);
 
-function addWorkflowRule(board) {
-  if (!Array.isArray(board.rules)) board.rules = [];
-  board.rules.push({ id: uid(), active: true, trigger: { type: "created" }, action: { type: "notify" } });
-  save();
-  rerenderViewOnly(board);
+/* ---- builder UI ---- */
+
+function wfNodeMeta(node, isTrigger) {
+  if (isTrigger) return wfTrigMeta(node.type);
+  if (node.kind === "action") return wfActMeta(node.type);
+  if (node.kind === "condition") return { icon: "filterFunnel", label: "Only continue if…" };
+  if (node.kind === "wait") return { icon: "clock", label: "Wait" };
+  return { icon: "bolt", label: "Step" };
 }
 
-function workflowRuleEl(board, r) {
-  const card = h("div", { class: "wf-rule" });
-  const toggle = h("div", { class: "toggle-pill" + (r.active ? " on" : ""), title: "Active", onclick: () => { r.active = !r.active; save(); rerenderViewOnly(board); } });
-  const del = h("button", { class: "row-act", title: "Delete automation", onclick: () => { board.rules = board.rules.filter(x => x !== r); save(); rerenderViewOnly(board); } });
-  del.append(ico("trash", 14));
-  card.append(h("div", { class: "wf-rule-head" }, ico("bolt", 16), h("b", {}, "Automation"),
-    h("div", { class: "wf-status" }, r.active ? "Active" : "Inactive", toggle, del)));
+function wfTargetBoard(board) {
+  const id = board.flow.trigger && board.flow.trigger.config && board.flow.trigger.config.boardId;
+  return state.boards.find(b => b.id === id) || wsBoards().find(b => b.kind === "board") || null;
+}
 
-  const row = h("div", { class: "wf-rule-row" });
-  row.append(h("span", { class: "wf-when" }, "When"));
-  row.append(wfToken(mkWfSelect([{ id: "created", label: "an item is created" }, { id: "status", label: "a status changes to" }], r.trigger.type, (v) => { r.trigger.type = v; if (v === "status" && !r.trigger.value) r.trigger.value = STATUSES[1].id; save(); rerenderViewOnly(board); })));
-  if (r.trigger.type === "status") row.append(wfToken(mkWfSelect(STATUSES.map(s => ({ id: s.id, label: s.label })), r.trigger.value || STATUSES[1].id, (v) => { r.trigger.value = v; save(); })));
+function wfSummary(board, id, node, isTrigger) {
+  const c = node.config || {};
+  const tb = wfTargetBoard(board);
+  if (isTrigger) {
+    const b = state.boards.find(x => x.id === c.boardId);
+    if (!c.boardId || !b) return "";
+    if (node.type === "status_changes") return `${b.name} · ${c.statusValue && c.statusValue !== "any" ? statusLabel(c.statusValue) : "any status"}`;
+    if (node.type === "date_arrives") return `${b.name} · ${c.offset ? c.offset + " day(s) before" : "on the date"} · ${c.time || "9:00 AM"}`;
+    if (node.type === "column_changes") { const col = (b.columns || []).find(x => x.id === c.colId); return `${b.name} · ${col ? col.name : "any column"}`; }
+    return b.name;
+  }
+  if (node.kind === "action") {
+    if (node.type === "change_status") return `to ${statusLabel(c.value)}`;
+    if (node.type === "set_priority") return `to ${prioLabel(c.value)}`;
+    if (node.type === "move_group") { const g = tb && tb.groups.find(x => x.id === c.groupId); return g ? `to ${g.name}` : ""; }
+    if (node.type === "notify") return c.message ? `"${c.message}"` : "me";
+    if (node.type === "create_item") return c.name ? `"${c.name}"` : "";
+  }
+  if (node.kind === "condition") return `${c.field || "status"} is ${c.field === "priority" ? prioLabel(c.value) : statusLabel(c.value)}`;
+  if (node.kind === "wait") return `${c.days || 1} day(s)`;
+  return "";
+}
 
-  row.append(h("span", { class: "wf-when" }, "then"));
-  row.append(wfToken(mkWfSelect([{ id: "notify", label: "notify me" }, { id: "setStatus", label: "set status to" }, { id: "setPriority", label: "set priority to" }], r.action.type, (v) => { r.action.type = v; if (v === "setStatus" && !r.action.value) r.action.value = STATUSES[1].id; if (v === "setPriority" && !r.action.value) r.action.value = PRIORITIES[1].id; save(); rerenderViewOnly(board); }), true));
-  if (r.action.type === "setStatus") row.append(wfToken(mkWfSelect(STATUSES.map(s => ({ id: s.id, label: s.label })), r.action.value || STATUSES[1].id, (v) => { r.action.value = v; save(); }), true));
-  if (r.action.type === "setPriority") row.append(wfToken(mkWfSelect(PRIORITIES.filter(p => p.id !== "none").map(p => ({ id: p.id, label: p.label })), r.action.value || PRIORITIES[1].id, (v) => { r.action.value = v; save(); }), true));
-
-  card.append(row);
+function wfStepCard(board, id, node, num) {
+  const isTrigger = id === "trigger";
+  const meta = wfNodeMeta(node, isTrigger);
+  const card = h("div", { class: "wf-step" + (ui.wfSel === id ? " sel" : "") });
+  card.append(h("span", { class: "wf-step-num" }, String(num)));
+  card.append(h("span", { class: "wf-step-ico" + (isTrigger ? " trig" : "") }, ico(meta.icon, 16)));
+  const sum = wfSummary(board, id, node, isTrigger);
+  card.append(h("div", { style: "flex:1;min-width:0" },
+    h("div", { class: "wf-step-title" }, meta.label),
+    h("div", { class: "wf-step-sub" + (sum ? "" : " link") }, sum || "Set up this step")));
+  const menu = h("button", { class: "row-act", title: "Options" });
+  menu.append(ico("dots", 15));
+  menu.addEventListener("click", (e) => { e.stopPropagation(); wfStepMenu(menu, board, id, node, isTrigger); });
+  card.append(menu);
+  card.addEventListener("click", () => { ui.wfSel = id; rerenderViewOnly(board); });
   return card;
 }
 
+function wfStepMenu(anchor, board, id, node, isTrigger) {
+  openDropdown(anchor, (el, close) => {
+    el.append(ddItem("gear", "Set up this step", () => { close(); ui.wfSel = id; rerenderViewOnly(board); }));
+    if (isTrigger) el.append(ddItem("bolt", "Change trigger", () => { close(); board.flow.trigger = null; ui.wfSel = null; save(); rerenderViewOnly(board); }));
+    else el.append(h("hr", { class: "dd-sep" }), ddItem("trash", "Delete step", () => { close(); board.flow.steps = board.flow.steps.filter(s => s.id !== id); if (ui.wfSel === id) ui.wfSel = null; save(); rerenderViewOnly(board); }, "danger"));
+  }, { minWidth: 200 });
+}
+
+function wfTriggerPicker(anchor, board) {
+  openDropdown(anchor, (el, close) => {
+    const si = h("input", { type: "text", placeholder: "What happens to trigger this workflow?" });
+    const sw = h("div", { class: "side-search", style: "margin:2px 0 8px" }, ico("search", 14), si);
+    el.append(sw);
+    el.append(h("div", { class: "dd-title" }, "Suggested for you"));
+    const host = h("div", {});
+    el.append(host);
+    const draw = () => {
+      host.replaceChildren();
+      const f = si.value.toLowerCase();
+      for (const t of WF_TRIGGERS) {
+        if (f && !t.label.toLowerCase().includes(f)) continue;
+        host.append(ddItem(t.icon, t.label, () => {
+          close();
+          board.flow.trigger = { type: t.type, config: {} };
+          ui.wfSel = "trigger";
+          save();
+          rerenderViewOnly(board);
+        }));
+      }
+    };
+    si.addEventListener("input", draw);
+    si.addEventListener("keydown", (e) => e.stopPropagation());
+    draw();
+  }, { minWidth: 320 });
+}
+
+function wfNextPicker(anchor, board) {
+  openDropdown(anchor, (el, close) => {
+    el.append(h("div", { class: "dd-title" }, "What should happen next?"));
+    el.append(ddItem("bolt", "Action", () => { close(); wfActionPicker(anchor, board); }));
+    el.append(ddItem("filterFunnel", "Condition", () => {
+      close();
+      const step = { id: uid(), kind: "condition", config: { field: "status", value: STATUSES[1].id } };
+      board.flow.steps.push(step); ui.wfSel = step.id; save(); rerenderViewOnly(board);
+    }));
+    el.append(ddItem("clock", "Wait", () => {
+      close();
+      const step = { id: uid(), kind: "wait", config: { days: 1 } };
+      board.flow.steps.push(step); ui.wfSel = step.id; save(); rerenderViewOnly(board);
+    }));
+    const ag = ddItem("vibe", "Agents", () => { close(); toast("Agents — coming soon in demo"); }, "soon");
+    ag.append(h("span", { class: "dd-badge" }, "Soon"));
+    el.append(ag);
+  }, { minWidth: 260 });
+}
+
+function wfActionPicker(anchor, board) {
+  openDropdown(anchor, (el, close) => {
+    const si = h("input", { type: "text", placeholder: "What should happen next?" });
+    el.append(h("div", { class: "side-search", style: "margin:2px 0 8px" }, ico("search", 14), si));
+    el.append(h("div", { class: "dd-title" }, "Featured"));
+    const host = h("div", {});
+    el.append(host);
+    const draw = () => {
+      host.replaceChildren();
+      const f = si.value.toLowerCase();
+      for (const a of WF_ACTIONS) {
+        if (f && !a.label.toLowerCase().includes(f)) continue;
+        host.append(ddItem(a.icon, a.label, () => {
+          close();
+          const def = a.type === "change_status" ? { value: STATUSES[1].id } : a.type === "set_priority" ? { value: PRIORITIES[1].id } : a.type === "create_item" ? { name: "New item" } : {};
+          const step = { id: uid(), kind: "action", type: a.type, config: def };
+          board.flow.steps.push(step); ui.wfSel = step.id; save(); rerenderViewOnly(board);
+        }));
+      }
+    };
+    si.addEventListener("input", draw);
+    si.addEventListener("keydown", (e) => e.stopPropagation());
+    draw();
+  }, { minWidth: 300 });
+}
+
+function wfField(label, control, req) {
+  return h("div", { class: "wf-field" }, h("label", {}, label, req ? h("span", { style: "color:var(--danger)" }, " *") : null), control);
+}
+function wfSelectF(opts, cur, on) {
+  const s = h("select", { class: "wf-select" });
+  for (const o of opts) s.append(h("option", { value: o.id }, o.label));
+  s.value = cur != null ? cur : (opts[0] && opts[0].id);
+  s.addEventListener("change", () => on(s.value));
+  return s;
+}
+
+function wfSettingsPanel(board) {
+  const id = ui.wfSel;
+  const isTrigger = id === "trigger";
+  const node = isTrigger ? board.flow.trigger : board.flow.steps.find(s => s.id === id);
+  if (!node) { ui.wfSel = null; return h("div", { style: "display:none" }); }
+  const meta = wfNodeMeta(node, isTrigger);
+  const c = node.config = node.config || {};
+  const reRun = () => { save(); rerenderViewOnly(board); };
+  const saveOnly = () => { save(); };
+
+  const panel = h("div", { class: "wf-panel" });
+  const closeBtn = h("button", { class: "icon-btn", onclick: () => { ui.wfSel = null; rerenderViewOnly(board); } });
+  closeBtn.append(ico("x", 16));
+  panel.append(h("div", { class: "wf-panel-head" }, h("span", { class: "wf-step-ico" + (isTrigger ? " trig" : "") }, ico(meta.icon, 16)), h("b", { style: "flex:1" }, meta.label), closeBtn));
+  const body = h("div", { class: "wf-panel-body" });
+  panel.append(body);
+
+  const boardOpts = wsBoards().filter(b => b.kind === "board").map(b => ({ id: b.id, label: b.name }));
+  const targetBoard = wfTargetBoard(board);
+
+  if (isTrigger) {
+    body.append(wfField("Board", wfSelectF([{ id: "", label: "Choose board" }, ...boardOpts], c.boardId || "", (v) => { c.boardId = v || null; reRun(); }), true));
+    if (node.type === "status_changes") {
+      body.append(wfField("Status is", wfSelectF([{ id: "any", label: "Any status" }, ...STATUSES.map(s => ({ id: s.id, label: s.label }))], c.statusValue || "any", (v) => { c.statusValue = v; reRun(); }), true));
+    } else if (node.type === "column_changes") {
+      const cols = (targetBoard && targetBoard.columns) || [];
+      body.append(wfField("Column", wfSelectF([{ id: "", label: "Any column" }, ...cols.map(x => ({ id: x.id, label: x.name }))], c.colId || "", (v) => { c.colId = v || null; reRun(); })));
+    } else if (node.type === "date_arrives") {
+      const dateCols = [{ id: "due", label: "Due date" }, ...((targetBoard && targetBoard.columns) || []).filter(x => x.type === "date").map(x => ({ id: x.id, label: x.name }))];
+      body.append(wfField("Date column", wfSelectF(dateCols, c.dateCol || "due", (v) => { c.dateCol = v; reRun(); }), true));
+      body.append(wfField("Date setup", wfSelectF([{ id: "0", label: "When the date arrives" }, { id: "1", label: "1 day before" }, { id: "2", label: "2 days before" }, { id: "7", label: "1 week before" }], String(c.offset || 0), (v) => { c.offset = Number(v); reRun(); })));
+      body.append(wfField("Time", wfSelectF(["7:30 AM", "9:00 AM", "12:00 PM", "5:00 PM"].map(t => ({ id: t, label: t })), c.time || "9:00 AM", (v) => { c.time = v; reRun(); })));
+      body.append(h("div", { class: "muted", style: "font-size:11px;margin-top:6px" }, "Time-based triggers are configured here; live firing needs a scheduler (next step)."));
+    }
+  } else if (node.kind === "action") {
+    if (node.type === "change_status") body.append(wfField("Set status to", wfSelectF(STATUSES.map(s => ({ id: s.id, label: s.label })), c.value || STATUSES[1].id, (v) => { c.value = v; reRun(); }), true));
+    else if (node.type === "set_priority") body.append(wfField("Set priority to", wfSelectF(PRIORITIES.filter(p => p.id !== "none").map(p => ({ id: p.id, label: p.label })), c.value || PRIORITIES[1].id, (v) => { c.value = v; reRun(); }), true));
+    else if (node.type === "move_group") {
+      const groups = (targetBoard && targetBoard.groups) || [];
+      body.append(wfField("Move to group", wfSelectF([{ id: "", label: "Choose group" }, ...groups.map(g => ({ id: g.id, label: g.name }))], c.groupId || "", (v) => { c.groupId = v || null; reRun(); }), true));
+    } else if (node.type === "create_item") {
+      const groups = (targetBoard && targetBoard.groups) || [];
+      const nameIn = h("input", { class: "wf-input", value: c.name || "", placeholder: "Item name" });
+      nameIn.addEventListener("input", () => { c.name = nameIn.value; });
+      nameIn.addEventListener("change", reRun);
+      body.append(wfField("Item name", nameIn, true));
+      body.append(wfField("In group", wfSelectF([{ id: "", label: "First group" }, ...groups.map(g => ({ id: g.id, label: g.name }))], c.groupId || "", (v) => { c.groupId = v || null; reRun(); })));
+    } else if (node.type === "notify") {
+      const msg = h("input", { class: "wf-input", value: c.message || "", placeholder: "Notification message (optional)" });
+      msg.addEventListener("input", () => { c.message = msg.value; });
+      msg.addEventListener("change", reRun);
+      body.append(wfField("Message", msg));
+    }
+  } else if (node.kind === "condition") {
+    body.append(wfField("Field", wfSelectF([{ id: "status", label: "Status" }, { id: "priority", label: "Priority" }], c.field || "status", (v) => { c.field = v; c.value = v === "priority" ? PRIORITIES[1].id : STATUSES[1].id; reRun(); })));
+    const opts = c.field === "priority" ? PRIORITIES.filter(p => p.id !== "none").map(p => ({ id: p.id, label: p.label })) : STATUSES.map(s => ({ id: s.id, label: s.label }));
+    body.append(wfField("Is equal to", wfSelectF(opts, c.value, (v) => { c.value = v; reRun(); })));
+  } else if (node.kind === "wait") {
+    const numIn = h("input", { class: "wf-input", type: "number", min: "1", value: String(c.days || 1) });
+    numIn.addEventListener("change", () => { c.days = Math.max(1, Number(numIn.value) || 1); reRun(); });
+    body.append(wfField("Wait (days)", numIn));
+  }
+
+  return panel;
+}
+
 function workflowViewEl(board) {
+  ensureFlow(board);
+  const flow = board.flow;
   const root = h("div", { class: "view-root wf-view" });
   const canvas = h("div", { class: "wf-canvas" });
-  if (!Array.isArray(board.rules)) board.rules = [];
-  if (!board.rules.length) {
-    canvas.append(h("div", { class: "wf-trigger-card", onclick: () => addWorkflowRule(board) },
-      h("span", { class: "wf-trigger-ico" }, ico("bolt", 18)), h("span", {}, "Choose a trigger")));
-    canvas.append(h("div", { class: "muted", style: "text-align:center;margin-top:10px" }, "Build an automation: when something happens on this workspace, do something."));
+
+  if (!flow.trigger) {
+    const trg = h("div", { class: "wf-trigger-card" }, h("span", { class: "wf-trigger-ico" }, ico("bolt", 18)), h("span", {}, "Choose a trigger"));
+    trg.addEventListener("click", () => wfTriggerPicker(trg, board));
+    canvas.append(trg);
   } else {
-    for (const r of board.rules) canvas.append(workflowRuleEl(board, r));
-    canvas.append(h("div", { class: "wf-add", onclick: () => addWorkflowRule(board) }, "＋ Add another automation"));
+    canvas.append(wfStepCard(board, "trigger", flow.trigger, 1));
+    let n = 2;
+    for (const step of flow.steps) { canvas.append(h("div", { class: "wf-connector" })); canvas.append(wfStepCard(board, step.id, step, n++)); }
+    canvas.append(h("div", { class: "wf-connector" }));
+    const next = h("div", { class: "wf-next" }, ico("plus", 16), h("span", {}, "What happens next?"));
+    next.addEventListener("click", () => wfNextPicker(next, board));
+    canvas.append(next);
   }
   root.append(canvas);
+  if (ui.wfSel) root.append(wfSettingsPanel(board));
   return root;
 }
 
 function workflowHeadEl(board) {
+  ensureFlow(board);
   const title = h("span", { class: "board-title" }, board.name);
   title.addEventListener("click", () => inlineEdit(title, board.name, (v) => { board.name = v; save(); render(); }, { style: "font-size:24px;font-weight:700" }));
   const menuBtn = h("button", { class: "icon-btn", title: "Workflow menu" });
   menuBtn.append(ico("dots", 17));
   menuBtn.addEventListener("click", () => boardMenu(menuBtn, board));
-  const active = (board.rules || []).some(r => r.active);
+
+  const canPublish = !!(board.flow.trigger && board.flow.steps.length);
+  const toggle = h("div", { class: "toggle-pill" + (board.flow.active ? " on" : ""), title: "Activate workflow" });
+  toggle.addEventListener("click", () => {
+    if (!canPublish) { toast("Add a trigger and at least one action first"); return; }
+    board.flow.active = !board.flow.active; save(); render();
+    toast(board.flow.active ? "Workflow activated" : "Workflow paused");
+  });
+
   return h("div", { class: "board-head" },
     h("div", { class: "bh-top" }, h("span", { class: "ws-dd-logo", style: "background:#5559df" }, ico("workflow", 16)), title,
-      h("span", { class: "muted", style: "font-size:12px;margin-left:6px" }, active ? "Active" : "Inactive"),
+      h("span", { class: "muted", style: "font-size:13px;margin-left:8px" }, board.flow.active ? "Active" : "Inactive"), toggle,
       h("div", { class: "bh-spacer" }), menuBtn));
 }
 
