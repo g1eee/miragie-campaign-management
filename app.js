@@ -8,20 +8,25 @@
 
 const LS_KEY = "gie_campaign_tracker_v1";
 
-const STATUSES = [
+const DEFAULT_STATUSES = [
   { id: "working", label: "Working on it", color: "#fdab3d" },
   { id: "done",    label: "Done",          color: "#00c875" },
   { id: "stuck",   label: "Stuck",         color: "#e2445c" },
   { id: "none",    label: "Not Started",   color: "#c4c4c4" },
 ];
 
-const PRIORITIES = [
+const DEFAULT_PRIORITIES = [
   { id: "critical", label: "Critical",  color: "#333333" },
   { id: "high",     label: "High",      color: "#401694" },
   { id: "medium",   label: "Medium",    color: "#5559df" },
   { id: "low",      label: "Low",       color: "#579bfc" },
   { id: "none",     label: "",          color: "#c4c4c4" },
 ];
+
+// Live label sets — rebound to state.statuses / state.priorities in migrate()
+// so users can rename labels and pick custom colors.
+let STATUSES = DEFAULT_STATUSES;
+let PRIORITIES = DEFAULT_PRIORITIES;
 
 const GROUP_COLORS = ["#579bfc", "#00c875", "#a25ddc", "#fdab3d", "#e2445c", "#ffcb00", "#0086c0", "#9d99b9"];
 const AVATAR_COLORS = ["#0073ea", "#a25ddc", "#00c875", "#fdab3d", "#e2445c", "#0086c0", "#9d50dd", "#ff642e"];
@@ -192,8 +197,8 @@ function relTime(ts) {
 }
 
 const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map(w => w[0].toUpperCase()).join("");
-const statusOf = (t) => STATUSES.find(s => s.id === t.status) || STATUSES[3];
-const prioOf = (t) => PRIORITIES.find(p => p.id === t.priority) || PRIORITIES[4];
+const statusOf = (t) => STATUSES.find(s => s.id === t.status) || { id: t.status, label: "", color: "#c4c4c4" };
+const prioOf = (t) => PRIORITIES.find(p => p.id === t.priority) || { id: t.priority, label: "", color: "#c4c4c4" };
 
 /* ---------------- State ---------------- */
 
@@ -345,6 +350,10 @@ function migrate() {
   }
   if (!state.wfFired) state.wfFired = {};
   if (!Array.isArray(state.workflows)) state.workflows = [];
+  if (!Array.isArray(state.statuses) || !state.statuses.length) state.statuses = JSON.parse(JSON.stringify(DEFAULT_STATUSES));
+  if (!Array.isArray(state.priorities) || !state.priorities.length) state.priorities = JSON.parse(JSON.stringify(DEFAULT_PRIORITIES));
+  STATUSES = state.statuses;
+  PRIORITIES = state.priorities;
 }
 
 function mkTask(name, opts = {}) {
@@ -638,7 +647,7 @@ function newItemModal(board, group, prefill = {}) {
 
     // Status
     const statusBtn = h("button", { class: "mi-pill" });
-    const drawStatus = () => { const s = STATUSES.find(x => x.id === data.status) || STATUSES[3]; statusBtn.style.background = s.color; statusBtn.textContent = s.label; };
+    const drawStatus = () => { const s = STATUSES.find(x => x.id === data.status) || STATUSES[STATUSES.length - 1]; statusBtn.style.background = s.color; statusBtn.textContent = s.label; };
     drawStatus();
     statusBtn.addEventListener("click", () => openDropdown(statusBtn, (dd, c) => {
       for (const s of STATUSES) dd.append(h("div", { class: "dd-color", style: `background:${s.color}`, onclick: () => { data.status = s.id; drawStatus(); c(); } }, s.label));
@@ -660,7 +669,7 @@ function newItemModal(board, group, prefill = {}) {
 
     // Priority
     const prioBtn = h("button", { class: "mi-pill" });
-    const drawPrio = () => { const p = PRIORITIES.find(x => x.id === data.priority) || PRIORITIES[4]; prioBtn.style.background = p.color; prioBtn.textContent = p.label || "—"; };
+    const drawPrio = () => { const p = PRIORITIES.find(x => x.id === data.priority) || PRIORITIES[PRIORITIES.length - 1]; prioBtn.style.background = p.color; prioBtn.textContent = p.label || "—"; };
     drawPrio();
     prioBtn.addEventListener("click", () => openDropdown(prioBtn, (dd, c) => {
       for (const p of PRIORITIES) dd.append(h("div", { class: "dd-color", style: `background:${p.color}`, onclick: () => { data.priority = p.id; drawPrio(); c(); } }, p.label || "—"));
@@ -2173,7 +2182,50 @@ function statusPicker(anchor, taskId) {
         },
       }, s.label));
     }
+    el.append(h("hr", { class: "dd-sep" }),
+      h("button", { class: "dd-footer-btn", onclick: () => { close(); systemLabelEditor(anchor, "status"); } }, "✎ Edit Labels"));
   }, { minWidth: 170 });
+}
+
+// Edit the built-in Status / Priority label sets: rename, custom color, add, delete.
+function systemLabelEditor(anchor, kind) {
+  const list = kind === "status" ? STATUSES : PRIORITIES;
+  openDropdown(anchor, (el) => {
+    el.append(h("div", { class: "dd-title" }, kind === "status" ? "Edit Status labels" : "Edit Priority labels"));
+    const host = h("div", {});
+    el.append(host);
+    const draw = () => {
+      host.replaceChildren();
+      for (const lb of list) {
+        const sw = h("input", { type: "color", class: "lbl-swatch", value: /^#([0-9a-f]{6})$/i.test(lb.color) ? lb.color : "#888888", title: "Custom color" });
+        sw.addEventListener("input", () => { lb.color = sw.value; save(); softRender(); });
+        sw.addEventListener("click", (e) => e.stopPropagation());
+        const inp = h("input", { class: "lbl-input", value: lb.label, placeholder: "Label name" });
+        inp.addEventListener("input", () => { lb.label = inp.value; });
+        inp.addEventListener("change", () => { save(); softRender(); });
+        inp.addEventListener("keydown", (e) => e.stopPropagation());
+        const del = h("button", { class: "row-act", title: list.length <= 1 ? "Keep at least one label" : "Delete label" });
+        del.append(ico("trash", 13));
+        del.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (list.length <= 1) { toast("Keep at least one label"); return; }
+          list.splice(list.indexOf(lb), 1);
+          save();
+          draw();
+          softRender();
+        });
+        host.append(h("div", { class: "lbl-row" }, sw, inp, del));
+      }
+    };
+    draw();
+    const add = h("button", { class: "dd-footer-btn", onclick: () => {
+      list.push({ id: uid(), label: "New Label", color: LABEL_PALETTE[list.length % LABEL_PALETTE.length] });
+      save();
+      draw();
+      softRender();
+    } }, "＋ Add label");
+    el.append(h("hr", { class: "dd-sep" }), add);
+  }, { minWidth: 280 });
 }
 
 function dateCellEl(task) {
@@ -2261,6 +2313,8 @@ function priorityPicker(anchor, taskId) {
         },
       }, p.label || "—"));
     }
+    el.append(h("hr", { class: "dd-sep" }),
+      h("button", { class: "dd-footer-btn", onclick: () => { close(); systemLabelEditor(anchor, "priority"); } }, "✎ Edit Labels"));
   }, { minWidth: 170 });
 }
 
@@ -3485,7 +3539,7 @@ function wfNextPicker(anchor, board, insertAt) {
     el.append(ddItem("bolt", "Action", () => { close(); wfActionPicker(anchor, board, insertAt); }));
     el.append(ddItem("filterFunnel", "Condition", () => {
       close();
-      wfInsertStep(board, { id: uid(), kind: "condition", config: { field: "status", value: STATUSES[1].id } }, insertAt);
+      wfInsertStep(board, { id: uid(), kind: "condition", config: { field: "status", value: (STATUSES[1] || STATUSES[0]).id } }, insertAt);
     }));
     el.append(ddItem("clock", "Wait", () => {
       close();
@@ -3511,7 +3565,7 @@ function wfActionPicker(anchor, board, insertAt) {
         if (f && !a.label.toLowerCase().includes(f)) continue;
         host.append(ddItem(a.icon, a.label, () => {
           close();
-          const def = a.type === "change_status" ? { value: STATUSES[1].id } : a.type === "set_priority" ? { value: PRIORITIES[1].id } : a.type === "create_item" ? { name: "New item" } : {};
+          const def = a.type === "change_status" ? { value: (STATUSES[1] || STATUSES[0]).id } : a.type === "set_priority" ? { value: (PRIORITIES[1] || PRIORITIES[0]).id } : a.type === "create_item" ? { name: "New item" } : {};
           wfInsertStep(board, { id: uid(), kind: "action", type: a.type, config: def }, insertAt);
         }));
       }
@@ -3568,8 +3622,8 @@ function wfSettingsPanel(board) {
       body.append(h("div", { class: "muted", style: "font-size:11px;margin-top:6px" }, "Checked every 30s while the app is open. Fires once per item per date."));
     }
   } else if (node.kind === "action") {
-    if (node.type === "change_status") body.append(wfField("Set status to", wfSelectF(STATUSES.map(s => ({ id: s.id, label: s.label })), c.value || STATUSES[1].id, (v) => { c.value = v; reRun(); }), true));
-    else if (node.type === "set_priority") body.append(wfField("Set priority to", wfSelectF(PRIORITIES.filter(p => p.id !== "none").map(p => ({ id: p.id, label: p.label })), c.value || PRIORITIES[1].id, (v) => { c.value = v; reRun(); }), true));
+    if (node.type === "change_status") body.append(wfField("Set status to", wfSelectF(STATUSES.map(s => ({ id: s.id, label: s.label })), c.value || (STATUSES[1] || STATUSES[0]).id, (v) => { c.value = v; reRun(); }), true));
+    else if (node.type === "set_priority") body.append(wfField("Set priority to", wfSelectF(PRIORITIES.filter(p => p.id !== "none").map(p => ({ id: p.id, label: p.label })), c.value || (PRIORITIES[1] || PRIORITIES[0]).id, (v) => { c.value = v; reRun(); }), true));
     else if (node.type === "move_group") {
       const groups = (targetBoard && targetBoard.groups) || [];
       body.append(wfField("Move to group", wfSelectF([{ id: "", label: "Choose group" }, ...groups.map(g => ({ id: g.id, label: g.name }))], c.groupId || "", (v) => { c.groupId = v || null; reRun(); }), true));
@@ -3587,7 +3641,7 @@ function wfSettingsPanel(board) {
       body.append(wfField("Message", msg));
     }
   } else if (node.kind === "condition") {
-    body.append(wfField("Field", wfSelectF([{ id: "status", label: "Status" }, { id: "priority", label: "Priority" }], c.field || "status", (v) => { c.field = v; c.value = v === "priority" ? PRIORITIES[1].id : STATUSES[1].id; reRun(); })));
+    body.append(wfField("Field", wfSelectF([{ id: "status", label: "Status" }, { id: "priority", label: "Priority" }], c.field || "status", (v) => { c.field = v; c.value = v === "priority" ? (PRIORITIES[1] || PRIORITIES[0]).id : (STATUSES[1] || STATUSES[0]).id; reRun(); })));
     const opts = c.field === "priority" ? PRIORITIES.filter(p => p.id !== "none").map(p => ({ id: p.id, label: p.label })) : STATUSES.map(s => ({ id: s.id, label: s.label }));
     body.append(wfField("Is equal to", wfSelectF(opts, c.value, (v) => { c.value = v; reRun(); })));
   } else if (node.kind === "wait") {
