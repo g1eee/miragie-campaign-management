@@ -126,6 +126,12 @@ const PATHS = {
   paperclip: '<path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.6 1.6 0 0 1-2.3-2.3l7.8-7.8"/>',
   at: '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
   smile: '<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>',
+  star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17l-5.2 2.6 1-5.8-4.3-4.1 5.9-.9z"/>',
+  starFill: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17l-5.2 2.6 1-5.8-4.3-4.1 5.9-.9z" fill="currentColor" stroke="none"/>',
+  archive: '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 7l8 6 8-6"/>',
+  badge: '<path d="M12 3l2 2h3v3l2 2-2 2v3h-3l-2 2-2-2H7v-3l-2-2 2-2V5h3z"/><path d="M9.5 12l1.7 1.7L15 10"/>',
+  move: '<path d="M12 3v18M3 12h18M8 7l4-4 4 4M8 17l4 4 4-4M7 8l-4 4 4 4M17 8l4 4-4 4"/>',
 };
 
 function ico(name, size = 16) {
@@ -223,6 +229,8 @@ const ui = {
   drag: null,            // {type:'task'|'card'|'chip', taskId}
   home: false,           // workspace home view
   homeTab: "content",    // recents | content | collaborators | permissions
+  whSel: new Set(),      // selected asset (board) ids in content tab
+  whArchived: false,     // content tab showing archived assets
   wfSel: null,           // selected workflow node id ("trigger" | stepId)
   wfPanel: null,         // "history" | null
   wfTab: "history",      // history | analytics
@@ -312,7 +320,12 @@ function migrate() {
     if (!w.letter) w.letter = (w.name[0] || "W").toUpperCase();
     if (w.desc == null) w.desc = "";
   }
-  for (const p of state.people) if (!("avatar" in p)) p.avatar = null;
+  for (const p of state.people) {
+    if (!("avatar" in p)) p.avatar = null;
+    if (!p.title) p.title = "Team member";
+    if (!p.email) p.email = (p.name || "user").toLowerCase().replace(/\s+/g, ".").replace(/[^a-z.]/g, "") + "@campaign.co";
+    if (!p.role) p.role = p.id === state.user ? "Owner" : "Member";
+  }
   for (const b of state.boards) {
     if (!b.workspaceId) b.workspaceId = state.workspaces[0].id;
     if (!b.kind) b.kind = "board";
@@ -327,6 +340,8 @@ function migrate() {
     if (!b.createdAt) b.createdAt = Date.now();
     if (!b.creator) b.creator = state.user || "u1";
     if (!b.icon) b.icon = "table";
+    if (!("archived" in b)) b.archived = false;
+    if (!("fav" in b)) b.fav = false;
     if (b.kind === "workflow") {
       if (!b.flow) b.flow = { active: false, trigger: null, steps: [], runs: [] };
       if (!Array.isArray(b.flow.steps)) b.flow.steps = [];
@@ -475,10 +490,10 @@ function seed() {
     workspaces: [{ id: "w1", name: "Main workspace", desc: "", color: "#00854d", letter: "M" }],
     activeWorkspace: "w1",
     people: [
-      { id: "u1", name: "Gie", color: "#0073ea", avatar: null },
-      { id: "u2", name: "Andi Pratama", color: "#a25ddc", avatar: null },
-      { id: "u3", name: "Sari Dewi", color: "#00c875", avatar: null },
-      { id: "u4", name: "Budi Santoso", color: "#fdab3d", avatar: null },
+      { id: "u1", name: "Gie", title: "Marketing Lead", email: "gie@campaign.co", role: "Owner", color: "#0073ea", avatar: null },
+      { id: "u2", name: "Andi Pratama", title: "Content Strategist", email: "andi@campaign.co", role: "Admin", color: "#a25ddc", avatar: null },
+      { id: "u3", name: "Sari Dewi", title: "Social Media Manager", email: "sari@campaign.co", role: "Member", color: "#00c875", avatar: null },
+      { id: "u4", name: "Budi Santoso", title: "Graphic Designer", email: "budi@campaign.co", role: "Member", color: "#fdab3d", avatar: null },
     ],
     activeBoard: b1.id,
     boards: [b1, b2],
@@ -866,7 +881,23 @@ function addBoard(opts = {}) {
 
 const WS_COLORS = ["#00854d", "#0073ea", "#a25ddc", "#e2445c", "#fdab3d", "#0086c0", "#ff642e", "#9d50dd"];
 
+// pastel-only palette for the workspace logo editor
+const WS_PASTEL = ["#ffd1d1", "#ffe0c2", "#fff1bf", "#d6f5cf", "#c2eede", "#cfe6ff", "#d7d6ff", "#ebd6ff", "#ffd6ef", "#e2e5ea"];
+const WS_ICONS = ["table", "dashboard", "kanban", "calendar", "chart", "target", "bolt", "vibe", "folder", "agent", "form", "doc"];
+
+// pick readable glyph color (dark on pastel/light, white on saturated)
+function textColorOn(hex) {
+  if (!hex || hex[0] !== "#" || hex.length < 7) return "#fff";
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#323338" : "#fff";
+}
+
+// render a workspace logo glyph: custom icon when set, else letter
+const wsGlyph = (w, iconSize) => (w.icon ? ico(w.icon, iconSize) : w.letter);
+
 function switchWorkspace(id) {
+  if (ui.whSel) ui.whSel.clear();
+  ui.whArchived = false;
   if (state.activeWorkspace === id) { openHome(); return; }
   state.activeWorkspace = id;
   const first = wsBoards()[0];
@@ -916,7 +947,7 @@ function workspaceMenu(anchor) {
       for (const w of matches) {
         const active = w.id === state.activeWorkspace;
         const it = h("div", { class: "dd-item" + (active ? "" : ""), style: active ? "background:var(--primary-selected)" : "", onclick: () => { close(); switchWorkspace(w.id); } },
-          h("span", { class: "ws-dd-logo", style: `background:${w.color}` }, w.letter),
+          h("span", { class: "ws-dd-logo", style: `background:${w.color};color:${textColorOn(w.color)}` }, wsGlyph(w, 15)),
           h("span", { style: "flex:1" }, w.name),
           active ? ico("check", 14) : null);
         listHost.append(it);
@@ -986,6 +1017,7 @@ function openHome() {
   ui.home = true;
   ui.panel = null;
   ui.sel.clear();
+  if (ui.whSel) ui.whSel.clear();
   render();
 }
 
@@ -1097,7 +1129,7 @@ function renderSidebar() {
 
   const w = getWorkspace();
   const wsChip = h("div", { class: "ws-chip", title: "Switch workspace" },
-    h("span", { class: "ws-logo", style: `background:${w.color}` }, w.letter), h("span", {}, w.name), ui.sideCollapsed ? null : ico("chevDown", 14));
+    h("span", { class: "ws-logo", style: `background:${w.color};color:${textColorOn(w.color)}` }, wsGlyph(w, 17)), h("span", {}, w.name), ui.sideCollapsed ? null : ico("chevDown", 14));
   wsChip.addEventListener("click", () => workspaceMenu(wsChip));
 
   const addNewBtn = h("button", { class: "ws-add", title: "Add new" });
@@ -1143,11 +1175,12 @@ function renderSidebar() {
 function renderBoardList(list) {
   list.replaceChildren();
   const filter = ui.sideSearch.toLowerCase();
-  if (!ui.sideCollapsed && !wsBoards().length) {
+  if (!ui.sideCollapsed && !wsBoards().filter(b => !b.archived).length) {
     list.append(h("div", { class: "side-empty" }, h("b", {}, "This workspace is empty"), h("span", {}, 'Click the "+" button to begin adding your first items.')));
     return;
   }
   for (const b of wsBoards()) {
+    if (b.archived) continue;
     if (filter && !b.name.toLowerCase().includes(filter)) continue;
     const menuBtn = h("button", { class: "item-menu", title: "Board menu" });
     menuBtn.append(ico("dots", 14));
@@ -1418,7 +1451,7 @@ function peopleManager(anchor) {
     const doAdd = () => {
       const name = input.value.trim();
       if (!name) return;
-      state.people.push({ id: uid(), name, color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length] });
+      state.people.push({ id: uid(), name, title: "Team member", email: name.toLowerCase().replace(/\s+/g, ".").replace(/[^a-z.]/g, "") + "@campaign.co", role: "Member", color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null });
       input.value = "";
       save();
       softRender();
@@ -3169,11 +3202,17 @@ function workspaceHomeEl() {
   root.append(h("div", { class: "wh-banner" }));
   const body = h("div", { class: "wh-body" });
 
-  const logo = h("div", { class: "wh-logo", style: `background:${w.color}` }, w.letter, h("span", { class: "wh-home-badge" }, ico("home", 16)));
+  const logo = h("div", { class: "wh-logo", title: "Edit workspace icon", style: `background:${w.color};color:${textColorOn(w.color)}` },
+    h("span", { class: "wh-logo-glyph" }, wsGlyph(w, 42)),
+    h("span", { class: "wh-home-badge" }, ico("home", 16)),
+    h("span", { class: "wh-logo-edit" }, ico("pencil", 13)));
+  logo.addEventListener("click", () => logoEditor(logo, w));
 
   const name = h("div", { class: "wh-name" }, w.name);
   name.addEventListener("click", () => inlineEdit(name, w.name, (v) => { w.name = v; w.letter = (v[0] || "W").toUpperCase(); save(); render(); }, { style: "font-size:26px;font-weight:700" }));
-  const titleRow = h("div", { class: "wh-title-row" }, name, ico("chevDown", 18));
+  const infoBtn = h("button", { class: "wh-info-btn", title: "Workspace info" }, ico("chevDown", 18));
+  infoBtn.addEventListener("click", (e) => { e.stopPropagation(); workspaceInfoMenu(infoBtn, w); });
+  const titleRow = h("div", { class: "wh-title-row" }, name, infoBtn);
 
   const desc = h("div", { class: "wh-desc" + (w.desc ? "" : " muted") }, w.desc || "Add workspace description");
   desc.addEventListener("click", () => inlineEdit(desc, w.desc, (v) => { w.desc = v; save(); render(); }));
@@ -3205,24 +3244,141 @@ function workspaceHomeEl() {
   body.append(tabs);
 
   if (ui.homeTab === "collaborators") body.append(whCollaborators());
+  else if (ui.homeTab === "recents") body.append(whRecents());
   else if (ui.homeTab === "permissions") body.append(h("div", { style: "padding:34px 0;color:var(--text-2)" }, "This workspace is private to you and invited members. Granular permission controls are coming soon in this demo."));
-  else body.append(whContent(ui.homeTab === "recents"));
+  else body.append(whContent());
 
   root.append(body);
   return root;
 }
 
+/* ---- Feature 1: workspace logo editor (pastel color + icon) ---- */
+function logoEditor(anchor, w) {
+  // live-apply to the on-screen logo + sidebar without re-rendering main (keeps anchor attached)
+  const applied = () => {
+    anchor.style.background = w.color;
+    anchor.style.color = textColorOn(w.color);
+    const glyph = anchor.querySelector(".wh-logo-glyph");
+    if (glyph) glyph.replaceChildren(wsGlyph(w, 42));
+    save();
+    renderSidebar();
+  };
+  openDropdown(anchor, (el, close) => {
+    el.classList.add("logo-editor");
+    el.append(h("div", { class: "dd-title" }, "Background color"));
+    const swatches = h("div", { class: "logo-swatches" });
+    for (const c of WS_PASTEL) {
+      const sw = h("button", { class: "logo-swatch" + (w.color === c ? " sel" : ""), style: `background:${c}`, title: c });
+      sw.addEventListener("click", () => { w.color = c; applied(); logoEditor(anchor, w); });
+      swatches.append(sw);
+    }
+    el.append(swatches);
+
+    el.append(h("div", { class: "dd-title", style: "margin-top:6px" }, "Icon"));
+    const icons = h("div", { class: "logo-icons" });
+    const letterBtn = h("button", { class: "logo-icon-opt" + (!w.icon ? " sel" : ""), title: "Letter" }, h("b", {}, w.letter));
+    letterBtn.addEventListener("click", () => { w.icon = null; applied(); logoEditor(anchor, w); });
+    icons.append(letterBtn);
+    for (const name of WS_ICONS) {
+      const opt = h("button", { class: "logo-icon-opt" + (w.icon === name ? " sel" : ""), title: name }, ico(name, 18));
+      opt.addEventListener("click", () => { w.icon = name; applied(); logoEditor(anchor, w); });
+      icons.append(opt);
+    }
+    el.append(icons);
+  }, { minWidth: 248 });
+}
+
+/* ---- Feature 5: workspace info popover ---- */
+function workspaceInfoMenu(anchor, w) {
+  openDropdown(anchor, (el, close) => {
+    el.classList.add("ws-info-pop");
+    el.append(h("div", { class: "ws-info-head" },
+      h("span", { class: "ws-dd-logo", style: `background:${w.color};color:${textColorOn(w.color)}` }, wsGlyph(w, 16)),
+      h("div", {}, h("b", {}, w.name), h("div", { class: "muted", style: "font-size:12px" }, w.desc || "No description"))));
+    el.append(h("hr", { class: "dd-sep" }));
+
+    const row = (label, valEl) => h("div", { class: "ws-info-row" }, h("span", { class: "ws-info-label" }, label), valEl);
+    el.append(row("Workspace type", h("span", { class: "ws-info-val" }, ico("person", 13), h("span", {}, "Open workspace"))));
+
+    const membersVal = h("button", { class: "ws-info-link" }, ico("person", 13), h("span", {}, "All members · " + state.people.length));
+    membersVal.addEventListener("click", () => membersListMenu(membersVal));
+    el.append(row("Members", membersVal));
+
+    el.append(row("Owner", h("span", { class: "ws-info-val" }, avatarEl(me(), 18), h("span", {}, me().name))));
+    el.append(row("Created", h("span", { class: "ws-info-val muted" }, "Campaign workspace")));
+  }, { minWidth: 280 });
+}
+
+function membersListMenu(anchor) {
+  openDropdown(anchor, (el, close) => {
+    el.append(h("div", { class: "dd-title" }, "Members · " + state.people.length));
+    for (const p of state.people) {
+      const it = h("div", { class: "dd-item", onclick: () => memberProfilePopover(it, p) },
+        avatarEl(p, 28),
+        h("div", { style: "flex:1;min-width:0" },
+          h("div", { style: "font-weight:500" }, p.name + (p.id === state.user ? " (you)" : "")),
+          h("div", { class: "muted", style: "font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" }, p.title || "Member")),
+        h("span", { class: "ws-role-chip" }, p.role || "Member"));
+      el.append(it);
+    }
+  }, { minWidth: 260 });
+}
+
+function memberProfilePopover(anchor, p) {
+  openDropdown(anchor, (el, close) => {
+    el.classList.add("member-profile");
+    el.append(h("div", { class: "mp-top" }, avatarEl(p, 56),
+      h("div", { style: "min-width:0" },
+        h("div", { class: "mp-name" }, p.name + (p.id === state.user ? " (you)" : "")),
+        h("div", { class: "mp-title" }, p.title || "Team member"))));
+    el.append(h("hr", { class: "dd-sep" }));
+    el.append(h("div", { class: "mp-field" }, ico("mail", 14), h("a", { class: "mp-mail", href: "mailto:" + p.email }, p.email)));
+    el.append(h("div", { class: "mp-field" }, ico("badge", 14), h("span", {}, "Workspace role: "), h("span", { class: "ws-role-chip" }, p.role || "Member")));
+  }, { minWidth: 250 });
+}
+
+/* ---- Feature 4: collaborators ---- */
 function whCollaborators() {
   const grid = h("div", { class: "wh-collab" });
   for (const p of state.people) {
-    grid.append(h("div", { class: "wh-collab-card" }, avatarEl(p, 42),
-      h("div", {}, h("b", {}, p.name), h("div", { class: "muted" }, p.id === state.user ? "Owner · you" : "Member"))));
+    const card = h("div", { class: "wh-collab-card", onclick: () => memberProfilePopover(card, p) }, avatarEl(p, 44),
+      h("div", { style: "min-width:0;flex:1" },
+        h("b", {}, p.name + (p.id === state.user ? " · you" : "")),
+        h("div", { class: "wh-collab-title" }, p.title || "Team member"),
+        h("a", { class: "wh-collab-mail", href: "mailto:" + p.email, onclick: (e) => e.stopPropagation() }, p.email)),
+      h("span", { class: "ws-role-chip" }, p.role || "Member"));
+    grid.append(card);
   }
   return grid;
 }
 
-function whContent(recents) {
+/* ---- Feature 3: recents (simple list + favorite star) ---- */
+function whRecents() {
+  const wrap = h("div", { class: "wh-recents" });
+  let boards = wsBoards().filter(b => !b.archived);
+  if (!boards.length) {
+    wrap.append(h("div", { class: "muted", style: "padding:24px 0" }, "No content yet. Add a board to see it here."));
+    return wrap;
+  }
+  boards = boards.slice().sort((a, b) => (b.fav ? 1 : 0) - (a.fav ? 1 : 0) || boardModified(b) - boardModified(a));
+  for (const b of boards) {
+    const star = h("button", { class: "wh-star" + (b.fav ? " on" : ""), title: b.fav ? "Remove favorite" : "Add to favorites" });
+    star.append(ico(b.fav ? "starFill" : "star", 17));
+    star.addEventListener("click", (e) => { e.stopPropagation(); b.fav = !b.fav; save(); renderMain(); });
+    const item = h("div", { class: "wh-recent-item", onclick: () => switchBoard(b.id) },
+      ico(b.icon || "table", 16),
+      h("span", { class: "wh-recent-name" }, b.name),
+      h("span", { class: "muted", style: "font-size:12px;margin-left:auto" }, relTime(boardModified(b))),
+      star);
+    wrap.append(item);
+  }
+  return wrap;
+}
+
+/* ---- Feature 2: content (checkbox select + row 3-dot: move/archive/delete) ---- */
+function whContent() {
   const wrap = h("div", {});
+  ui.whSel = ui.whSel || new Set();
 
   if (!wsBoards().length) {
     wrap.append(h("h3", { style: "margin:18px 0 4px;font-size:18px" }, "Nothing to show here, yet"));
@@ -3251,36 +3407,143 @@ function whContent(recents) {
   searchWrap.append(ico("search", 15), si);
   const filterBtn = h("button", { class: "tb-btn", onclick: () => toast("Filters — coming soon in demo") });
   filterBtn.append(ico("filterFunnel", 15), h("span", {}, "Filters"));
-  tb.append(searchWrap, filterBtn);
+  const archBtn = h("button", { class: "tb-btn" + (ui.whArchived ? " active" : "") });
+  archBtn.append(ico("archive", 15), h("span", {}, ui.whArchived ? "Active" : "Archived"));
+  archBtn.addEventListener("click", () => { ui.whArchived = !ui.whArchived; ui.whSel.clear(); renderMain(); });
+  tb.append(searchWrap, filterBtn, archBtn);
   wrap.append(tb);
 
+  // bulk action bar (shown when rows selected)
+  const bulkBar = h("div", { class: "wh-bulk" });
+  wrap.append(bulkBar);
+
   const table = h("table", { class: "wh-table" });
+  const headCheck = h("input", { type: "checkbox", class: "wh-check" });
+  headCheck.addEventListener("change", () => {
+    const ids = currentBoards().map(b => b.id);
+    if (headCheck.checked) ids.forEach(id => ui.whSel.add(id)); else ids.forEach(id => ui.whSel.delete(id));
+    drawTable();
+  });
   const thead = h("thead", {}, h("tr", {},
+    h("th", { class: "wh-col-act" }), h("th", { class: "wh-col-check" }, headCheck),
     h("th", {}, "Asset name"), h("th", {}, "AI summary"), h("th", {}, "Creator"),
     h("th", {}, "Creation date"), h("th", {}, "Last modified")));
   const tbody = h("tbody", {});
   table.append(thead, tbody);
   wrap.append(table);
 
+  const currentBoards = () => {
+    let boards = wsBoards().filter(b => !!b.archived === !!ui.whArchived);
+    if (filter) boards = boards.filter(b => b.name.toLowerCase().includes(filter));
+    return boards;
+  };
+
+  const drawBulk = () => {
+    bulkBar.replaceChildren();
+    const sel = [...ui.whSel].map(id => state.boards.find(b => b.id === id)).filter(Boolean);
+    if (!sel.length) { bulkBar.classList.remove("show"); return; }
+    bulkBar.classList.add("show");
+    bulkBar.append(h("span", { class: "wh-bulk-count" }, sel.length + " selected"));
+    if (!ui.whArchived) {
+      const mv = h("button", { class: "wh-bulk-btn" }, ico("move", 14), h("span", {}, "Move to"));
+      mv.addEventListener("click", () => moveToMenu(mv, sel));
+      bulkBar.append(mv);
+      const ar = h("button", { class: "wh-bulk-btn", onclick: () => archiveBoards(sel) }, ico("archive", 14), h("span", {}, "Archive"));
+      bulkBar.append(ar);
+    } else {
+      const un = h("button", { class: "wh-bulk-btn", onclick: () => unarchiveBoards(sel) }, ico("refresh", 14), h("span", {}, "Restore"));
+      bulkBar.append(un);
+    }
+    const del = h("button", { class: "wh-bulk-btn danger", onclick: () => deleteBoards(sel) }, ico("trash", 14), h("span", {}, "Delete"));
+    bulkBar.append(del);
+    const clr = h("button", { class: "wh-bulk-btn", onclick: () => { ui.whSel.clear(); drawTable(); } }, "Clear");
+    bulkBar.append(clr);
+  };
+
   const drawTable = () => {
     tbody.replaceChildren();
-    let boards = wsBoards();
-    if (recents) boards = boards.slice().sort((a, b) => boardModified(b) - boardModified(a));
+    const boards = currentBoards();
+    headCheck.checked = boards.length > 0 && boards.every(b => ui.whSel.has(b.id));
     for (const b of boards) {
-      if (filter && !b.name.toLowerCase().includes(filter)) continue;
       const creator = personById(b.creator) || me();
       const aiBtn = h("button", { class: "wh-ai", onclick: (e) => { e.stopPropagation(); toast("AI summary — coming soon in demo"); } });
       aiBtn.append(ico("vibe", 13), h("span", {}, "Generate"));
-      const row = h("tr", { class: "wh-asset-row", onclick: () => switchBoard(b.id) },
-        h("td", {}, h("div", { class: "wh-asset" }, ico(b.icon || "table", 16), h("span", {}, b.name))),
+
+      const dotsBtn = h("button", { class: "wh-row-dots", title: "Actions" });
+      dotsBtn.append(ico("dots", 16));
+      dotsBtn.addEventListener("click", (e) => { e.stopPropagation(); rowMenu(dotsBtn, b); });
+
+      const chk = h("input", { type: "checkbox", class: "wh-check", checked: ui.whSel.has(b.id) });
+      chk.addEventListener("click", (e) => e.stopPropagation());
+      chk.addEventListener("change", () => { chk.checked ? ui.whSel.add(b.id) : ui.whSel.delete(b.id); drawBulk(); headCheck.checked = boards.every(x => ui.whSel.has(x.id)); row.classList.toggle("sel", chk.checked); });
+
+      const row = h("tr", { class: "wh-asset-row" + (ui.whSel.has(b.id) ? " sel" : ""), onclick: () => switchBoard(b.id) },
+        h("td", { class: "wh-col-act" }, dotsBtn),
+        h("td", { class: "wh-col-check" }, chk),
+        h("td", {}, h("div", { class: "wh-asset" }, ico(b.icon || "table", 16), h("span", {}, b.name), b.archived ? h("span", { class: "wh-arch-tag" }, "Archived") : null)),
         h("td", {}, aiBtn),
         h("td", {}, h("div", { style: "display:flex;align-items:center;gap:8px" }, avatarEl(creator, 24), h("span", { class: "muted" }, creator.name.split(" ")[0]))),
         h("td", { class: "muted" }, fmtDate(tsToIso(b.createdAt), true)),
         h("td", { class: "muted" }, fmtDate(tsToIso(boardModified(b)), true)));
       tbody.append(row);
     }
-    if (!tbody.children.length) tbody.append(h("tr", {}, h("td", { colspan: "5", class: "muted", style: "padding:20px;text-align:center" }, "No assets match your search.")));
+    if (!tbody.children.length) tbody.append(h("tr", {}, h("td", { colspan: "7", class: "muted", style: "padding:20px;text-align:center" }, ui.whArchived ? "No archived assets." : "No assets match your search.")));
+    drawBulk();
   };
+
+  // per-row 3-dot menu: Move to / Archive / Delete
+  const rowMenu = (anchor, b) => {
+    openDropdown(anchor, (el, close) => {
+      if (!b.archived) {
+        el.append(ddItem("move", "Move to", () => { close(); moveToMenu(anchor, [b]); }));
+        el.append(ddItem("archive", "Archive", () => { close(); archiveBoards([b]); }));
+      } else {
+        el.append(ddItem("refresh", "Restore", () => { close(); unarchiveBoards([b]); }));
+      }
+      el.append(h("hr", { class: "dd-sep" }));
+      el.append(ddItem("trash", "Delete", () => { close(); deleteBoards([b]); }, "danger"));
+    }, { minWidth: 180 });
+  };
+
+  const moveToMenu = (anchor, boards) => {
+    openDropdown(anchor, (el, close) => {
+      el.append(h("div", { class: "dd-title" }, "Move to workspace"));
+      const targets = state.workspaces.filter(w => w.id !== state.activeWorkspace);
+      if (!targets.length) { el.append(h("div", { class: "dd-item disabled" }, "No other workspace")); return; }
+      for (const w of targets) {
+        el.append(h("div", { class: "dd-item", onclick: () => { close(); moveBoardsTo(boards, w); } },
+          h("span", { class: "ws-dd-logo", style: `background:${w.color};color:${textColorOn(w.color)}` }, wsGlyph(w, 14)),
+          h("span", {}, w.name)));
+      }
+    }, { minWidth: 220 });
+  };
+
+  const moveBoardsTo = (boards, w) => {
+    boards.forEach(b => { b.workspaceId = w.id; });
+    ui.whSel.clear(); save(); render();
+    toast(`Moved ${boards.length} item${boards.length > 1 ? "s" : ""} to "${w.name}"`);
+  };
+
+  const archiveBoards = (boards) => {
+    boards.forEach(b => { b.archived = true; });
+    ui.whSel.clear(); save(); render();
+    toast(`Archived ${boards.length} item${boards.length > 1 ? "s" : ""}`, () => { boards.forEach(b => b.archived = false); save(); render(); });
+  };
+
+  const unarchiveBoards = (boards) => {
+    boards.forEach(b => { b.archived = false; });
+    ui.whSel.clear(); save(); render();
+    toast(`Restored ${boards.length} item${boards.length > 1 ? "s" : ""}`);
+  };
+
+  const deleteBoards = (boards) => {
+    if (!confirm(`Delete ${boards.length} item${boards.length > 1 ? "s" : ""}? This cannot be undone.`)) return;
+    boards.forEach(b => { const i = state.boards.indexOf(b); if (i > -1) state.boards.splice(i, 1); });
+    if (!state.boards.find(b => b.id === state.activeBoard)) state.activeBoard = (wsBoards()[0] || {}).id || null;
+    ui.whSel.clear(); save(); render();
+    toast(`Deleted ${boards.length} item${boards.length > 1 ? "s" : ""}`);
+  };
+
   drawTable();
   return wrap;
 }
