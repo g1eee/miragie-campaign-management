@@ -252,7 +252,10 @@ input, textarea, select {
 
 /* ============ Main / Board header ============ */
 
-#main { flex: 1; overflow: auto; display: flex; flex-direction: column; min-width: 0; }
+/* #main scrolls vertically only; each view owns its horizontal scroll so frozen
+   (sticky) table columns pin to the table's own scroll container, not #main */
+#main { flex: 1; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; min-width: 0; }
+.gantt-view { overflow: auto; flex: 1; min-height: 0; }
 
 .board-head { padding: 18px 32px 0; flex: none; }
 
