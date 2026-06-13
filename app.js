@@ -260,7 +260,9 @@ function initCloud() {
     if (u) {
       const team = await window.CLOUD.loadTeam();
       if (team && Array.isArray(team.boards)) {
-        state = team; migrate(); reconcileIdentity(); saveLocal(); render();
+        state = team; migrate(); reconcileIdentity(); saveLocal();
+        ui.home = true;   // land on Workspace home after sign-in
+        render();
         toast("☁ Team workspace loaded");
         return;
       }
@@ -983,6 +985,12 @@ const ANIME_CHARS = [
 // hero portrait on workspace home — falls back to first available char art
 const WH_HERO = "assets/characters/frieren.png";
 
+// Decorative imagery (Unsplash) — cherry blossom / aesthetic, NOT the avatar assets
+const DECO_IMG = {
+  sidebar: "https://images.unsplash.com/photo-1551829142-d9b8cf2c9232?w=520&q=80&auto=format&fit=crop",
+  login:   "https://images.unsplash.com/photo-1522383225653-ed111181a951?w=1600&q=80&auto=format&fit=crop",
+};
+
 // pick readable glyph color (dark on pastel/light, white on saturated)
 function textColorOn(hex) {
   if (!hex || hex[0] !== "#" || hex.length < 7) return "#fff";
@@ -1201,13 +1209,13 @@ function renderAuthGate() {
   if (!gate) { gate = h("div", { id: "auth-gate" }); document.body.appendChild(gate); }
   gate.replaceChildren();
 
-  // decorative character + falling petals on the login screen
+  // cherry-blossom background photo (Unsplash) + soft overlay + falling petals
+  const bg = h("img", { class: "auth-bg", src: DECO_IMG.login, alt: "" });
+  bg.addEventListener("error", () => bg.remove());
+  gate.append(bg, h("div", { class: "auth-overlay" }));
   const gsak = h("div", { class: "sakura sakura-gate" });
   for (let i = 0; i < 12; i++) gsak.append(h("span", { class: "petal" }));
   gate.append(gsak);
-  const gchar = h("img", { class: "auth-char", src: WH_HERO, alt: "" });
-  gchar.addEventListener("error", () => gchar.remove());
-  gate.append(gchar);
 
   const card = h("div", { class: "auth-card" });
   const brand = h("div", { class: "auth-brand" },
@@ -1381,11 +1389,10 @@ function renderSidebar() {
   sb.append(list);
   renderBoardList(list);
 
-  // anime skin: a little chibi sitting at the bottom of the sidebar
+  // anime skin: a soft cherry-blossom card at the bottom of the sidebar
   if ((state.skin || "default") === "frieren") {
     const deco = h("div", { class: "side-deco" });
-    const pick = ANIME_CHARS[(new Date().getDate()) % ANIME_CHARS.length]; // rotates daily
-    const img = h("img", { src: pick.img, alt: "" });
+    const img = h("img", { src: DECO_IMG.sidebar, alt: "", loading: "lazy" });
     img.addEventListener("error", () => deco.remove());
     deco.append(img, h("div", { class: "side-deco-bubble" }, "Let's get things done ✨"));
     sb.append(deco);
@@ -4839,6 +4846,7 @@ function wireTopbar() {
 /* ---------------- Init ---------------- */
 
 load();
+ui.home = true;   // always land on Workspace home on open, not the last/just-created board
 wireTopbar();
 render();
 initCloud();

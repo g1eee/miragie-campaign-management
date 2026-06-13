@@ -2143,10 +2143,10 @@ html.gated, html.gated body { overflow: hidden; }
 /* ============ Anime skin: decorations (chibi + sakura) ============ */
 
 /* sidebar chibi */
-.side-deco { margin-top: auto; padding: 10px 6px 4px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.side-deco { margin-top: auto; padding: 12px 6px 6px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .side-deco img {
-  width: 92px; height: 92px; object-fit: cover; border-radius: 18px;
-  border: 3px solid var(--bg); box-shadow: 0 8px 18px rgba(110, 80, 160, 0.25);
+  width: 100%; height: 96px; object-fit: cover; border-radius: 14px;
+  box-shadow: 0 8px 18px rgba(110, 80, 160, 0.22);
 }
 .side-deco-bubble {
   font-size: 11px; font-weight: 600; color: #7a62ac; background: var(--bg);
@@ -2183,12 +2183,13 @@ html.gated, html.gated body { overflow: hidden; }
 .sakura .petal:nth-child(12) { left: 95%; animation-duration: 7.8s; animation-delay: 2.3s; width: 11px; height: 11px; }
 @media (prefers-reduced-motion: reduce) { .sakura { display: none; } }
 
-/* login screen: full-height petals + peeking character */
-.sakura-gate { position: fixed; inset: 0; height: 100%; --fall: 100vh; z-index: 0; }
-.auth-char {
-  position: fixed; right: 4%; bottom: 0; width: 240px; height: 240px; object-fit: cover;
-  border-radius: 28px 28px 0 0; box-shadow: 0 -8px 40px rgba(90, 60, 140, 0.3);
-  z-index: 1; pointer-events: none;
+/* login screen: cherry-blossom background photo + petals */
+.auth-bg { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+.auth-overlay {
+  position: fixed; inset: 0; z-index: 1;
+  background: linear-gradient(135deg, rgba(243,231,251,0.82) 0%, rgba(231,238,255,0.78) 55%, rgba(246,238,247,0.82) 100%);
+  backdrop-filter: blur(1px);
 }
-#auth-gate .auth-card { position: relative; z-index: 2; }
-@media (max-width: 760px) { .auth-char { display: none; } }
+[data-theme="dark"] .auth-overlay { background: linear-gradient(135deg, rgba(26,23,48,0.86), rgba(21,35,63,0.82) 55%, rgba(36,26,54,0.86)); }
+.sakura-gate { position: fixed; inset: 0; height: 100%; --fall: 100vh; z-index: 2; }
+#auth-gate .auth-card { position: relative; z-index: 3; }
