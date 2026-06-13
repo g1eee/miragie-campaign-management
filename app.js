@@ -243,7 +243,8 @@ function save() {
   saveLocal();
   if (typeof window !== "undefined" && window.CLOUD && window.CLOUD.available() && window.CLOUD.user()) {
     clearTimeout(cloudTimer);
-    cloudTimer = setTimeout(() => window.CLOUD.save(state), 800);
+    // shared team workspace (all members write the same row)
+    cloudTimer = setTimeout(() => window.CLOUD.saveTeam(state), 800);
   }
 }
 
@@ -253,10 +254,21 @@ function initCloud() {
   if (!cloudOn()) return;
   window.CLOUD.init(async (u) => {
     if (u) {
-      const remote = await window.CLOUD.load();
-      if (remote && Array.isArray(remote.boards)) { state = remote; migrate(); saveLocal(); render(); toast("☁ Cloud data loaded"); return; }
-      window.CLOUD.save(state); // first sign-in on this account: push local up
-      toast("☁ Synced to cloud");
+      const team = await window.CLOUD.loadTeam();
+      if (team && Array.isArray(team.boards)) {
+        state = team; migrate(); reconcileIdentity(); saveLocal(); render();
+        toast("☁ Team workspace loaded");
+        return;
+      }
+      // no shared workspace yet
+      if ((window.CLOUD.email() || "").toLowerCase() === ADMIN_EMAIL) {
+        reconcileIdentity();
+        await window.CLOUD.saveTeam(state);   // admin seeds the team baseline from local
+        toast("☁ Team workspace created");
+      } else {
+        // signed in but not on the team (RLS blocks read) — stay local, tell them
+        toast("Signed in. Ask the admin to invite " + (window.CLOUD.email() || "your email"));
+      }
     }
     render();
   });
@@ -266,9 +278,9 @@ function cloudAuthModal() {
   openModal((card, close) => {
     const closeBtn = h("button", { class: "icon-btn", onclick: close });
     closeBtn.append(ico("x", 16));
-    card.append(h("div", { class: "modal-head" }, h("div", { class: "ip-title", style: "flex:1" }, "Cloud sync"), closeBtn));
+    card.append(h("div", { class: "modal-head" }, h("div", { class: "ip-title", style: "flex:1" }, "Team sign in"), closeBtn));
     const body = h("div", { class: "modal-body" });
-    body.append(h("p", { class: "muted", style: "margin-bottom:14px" }, "Sign in (or create an account) to back up your workspaces to the cloud and sync across devices."));
+    body.append(h("p", { class: "muted", style: "margin-bottom:14px" }, "Sign in to the shared team workspace. Admin (" + ADMIN_EMAIL + ") manages members; invited members sign up with the email they were invited with."));
     const email = h("input", { type: "email", class: "lbl-input", placeholder: "you@email.com", style: "width:100%;height:38px;margin-bottom:10px" });
     const pw = h("input", { type: "password", class: "lbl-input", placeholder: "Password (min 6 chars)", style: "width:100%;height:38px" });
     const msg = h("div", { class: "muted", style: "min-height:18px;margin-top:10px;font-size:12px" });
@@ -518,8 +530,30 @@ const getBoard = () => state.boards.find(b => b.id === state.activeBoard) || wsB
 const personById = (id) => state.people.find(p => p.id === id);
 const me = () => personById(state.user) || state.people[0];
 const ADMIN_EMAIL = "portfoliog1eee@gmail.com";
-// main admin = the owner account (full control: can create workspaces, manage members)
-const isAdmin = () => { const u = me(); return !!u && (u.role === "Owner" || (u.email || "").toLowerCase() === ADMIN_EMAIL); };
+// main admin = the owner account (full control: can create workspaces, manage members).
+// When signed into the cloud, admin is decided by the SERVER-VERIFIED email (tamper-resistant);
+// offline/local falls back to the local owner role so the demo stays fully usable.
+function isAdmin() {
+  if (cloudOn() && window.CLOUD.user()) return (window.CLOUD.email() || "").toLowerCase() === ADMIN_EMAIL;
+  const u = me();
+  return !!u && (u.role === "Owner" || (u.email || "").toLowerCase() === ADMIN_EMAIL);
+}
+// signed into the shared team cloud?
+const teamOn = () => cloudOn() && !!window.CLOUD.user();
+
+// map the signed-in email to a person in the shared workspace, so "you" + role are correct
+function reconcileIdentity() {
+  if (!teamOn()) return;
+  const email = (window.CLOUD.email() || "").toLowerCase();
+  if (!email) return;
+  let p = state.people.find(x => (x.email || "").toLowerCase() === email);
+  if (!p) {
+    p = { id: uid(), name: email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase()), title: "Member", email, role: email === ADMIN_EMAIL ? "Owner" : "Member", color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null };
+    state.people.push(p);
+  }
+  if (email === ADMIN_EMAIL) p.role = "Owner";
+  state.user = p.id;
+}
 const validEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s || "").trim());
 
 function locateTask(taskId) {
@@ -1504,8 +1538,9 @@ function peopleManager(anchor) {
       if (p.id !== state.user && !isOwner && admin) {
         const del = h("button", { class: "row-act", title: "Remove member" });
         del.append(ico("x", 13));
-        del.addEventListener("click", (e) => {
+        del.addEventListener("click", async (e) => {
           e.stopPropagation();
+          if (teamOn() && p.email) { const r = await window.CLOUD.removeMember(p.email); if (r.error) { toast("Remove failed: " + r.error); return; } }
           state.people = state.people.filter(x => x.id !== p.id);
           for (const b of state.boards) for (const g of b.groups) for (const t of g.tasks) t.owners = t.owners.filter(o => o !== p.id);
           if (ui.person === p.id) ui.person = null;
@@ -1538,15 +1573,24 @@ function peopleManager(anchor) {
     }
 
     const sendBtn = h("button", { class: "btn-primary", style: "padding:7px 14px" }, "Send invite");
-    const doInvite = () => {
+    const doInvite = async () => {
       const email = mailIn.value.trim().toLowerCase();
       if (!validEmail(email)) { toast("Enter a valid email"); mailIn.focus(); return; }
       if (state.people.some(p => (p.email || "").toLowerCase() === email)) { toast("That email is already a member"); return; }
       const name = nameIn.value.trim() || email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-      state.people.push({ id: uid(), name, title: "Invited member", email, role: admin ? inviteRole : "Member", color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null, invited: true });
+      const role = admin ? inviteRole : "Member";
+      // real invite: add to the team allow-list so they can load the shared workspace
+      if (teamOn()) {
+        if (!isAdmin()) { toast("Only the admin can invite members"); return; }
+        sendBtn.textContent = "Inviting…";
+        const r = await window.CLOUD.addMember(email, role, name);
+        sendBtn.textContent = "Send invite";
+        if (r.error) { toast("Invite failed: " + r.error); return; }
+      }
+      state.people.push({ id: uid(), name, title: "Invited member", email, role, color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null, invited: true });
       nameIn.value = ""; mailIn.value = "";
       save(); softRender(); peopleManager(anchor);
-      toast(`Invite sent to ${email} (demo)`);
+      toast(teamOn() ? `Invited ${email} — they can now sign up & join` : `Invite sent to ${email} (demo)`);
     };
     sendBtn.addEventListener("click", doInvite);
     mailIn.addEventListener("keydown", (e) => { if (e.key === "Enter") doInvite(); e.stopPropagation(); });
@@ -4581,7 +4625,7 @@ function profileMenu(anchor) {
       avatarEl(p, 72), h("span", { class: "profile-ava-edit" }, ico("camera", 14)));
     el.append(h("div", { class: "profile-top" }, avaWrap, fileIn,
       h("div", { class: "profile-name-big" }, p.name),
-      h("div", { class: "profile-mail" }, "Workspace owner")));
+      h("div", { class: "profile-mail" }, (p.role || "Member") + (teamOn() ? " · " + window.CLOUD.email() : (isAdmin() ? " · admin" : "")))));
 
     const input = h("input", { type: "text", value: p.name, placeholder: "Your name" });
     const okBtn = h("button", {}, "Save");

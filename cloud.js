@@ -9,6 +9,9 @@
   const SUPABASE_URL = "https://hwugotdnfufnuycgmqaw.supabase.co";
   const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3dWdvdGRuZnVmbnV5Y2dtcWF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyODA1NjQsImV4cCI6MjA5Njg1NjU2NH0.i4L2J8DdCMigNeC9VtBjEHadbGqTEiWQUlSAMjyWNyQ";
   const TABLE = "app_state";
+  const TEAM = "team_state";       // single shared workspace blob (id = 'main')
+  const MEMBERS = "team_members";  // access allow-list + roles
+  const ADMIN_EMAIL = "portfoliog1eee@gmail.com";
 
   let client = null;
   let user = null;
@@ -76,6 +79,52 @@
         const { error } = await client.from(TABLE).upsert({ user_id: user.id, data: state, updated_at: new Date().toISOString() });
         if (error) console.warn("cloud save", error);
       } catch (e) { console.warn("cloud save", e); }
+    },
+
+    /* ---------- Shared TEAM workspace (team_state) ---------- */
+    isAdminEmail: () => ((user && user.email) || "").toLowerCase() === ADMIN_EMAIL,
+
+    async loadTeam() {
+      if (!client || !user) return null;
+      try {
+        const { data, error } = await client.from(TEAM).select("data").eq("id", "main").maybeSingle();
+        if (error) { console.warn("team load", error); return null; }
+        return data ? data.data : null;
+      } catch (e) { console.warn("team load", e); return null; }
+    },
+
+    async saveTeam(state) {
+      if (!client || !user) return;
+      try {
+        const { error } = await client.from(TEAM).upsert({ id: "main", data: state, updated_at: new Date().toISOString() });
+        if (error) console.warn("team save", error);
+      } catch (e) { console.warn("team save", e); }
+    },
+
+    /* ---------- Team membership / roles (team_members) ---------- */
+    async listMembers() {
+      if (!client || !user) return [];
+      try {
+        const { data, error } = await client.from(MEMBERS).select("*").order("added_at", { ascending: true });
+        if (error) { console.warn("members list", error); return []; }
+        return data || [];
+      } catch (e) { console.warn("members list", e); return []; }
+    },
+
+    async addMember(email, role, name) {
+      if (!client || !user) return { error: "Cloud not available" };
+      try {
+        const { error } = await client.from(MEMBERS).upsert({ email: (email || "").toLowerCase(), role: role || "Member", name: name || null });
+        return { error: error ? friendly(error) : null };
+      } catch (e) { return { error: friendly(e) }; }
+    },
+
+    async removeMember(email) {
+      if (!client || !user) return { error: "Cloud not available" };
+      try {
+        const { error } = await client.from(MEMBERS).delete().eq("email", (email || "").toLowerCase());
+        return { error: error ? friendly(error) : null };
+      } catch (e) { return { error: friendly(e) }; }
     },
   };
 
