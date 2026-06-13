@@ -326,6 +326,12 @@ function migrate() {
     if (!p.email) p.email = (p.name || "user").toLowerCase().replace(/\s+/g, ".").replace(/[^a-z.]/g, "") + "@campaign.co";
     if (!p.role) p.role = p.id === state.user ? "Owner" : "Member";
   }
+  // the active account is the main admin/owner
+  const owner = state.people.find(p => p.id === state.user);
+  if (owner) {
+    owner.role = "Owner";
+    if (!owner.email || owner.email === "gie@campaign.co") owner.email = ADMIN_EMAIL;
+  }
   if (!state.skin) state.skin = "frieren";
   // one-time: give members anime character avatars (user-supplied art)
   if (!state.animeApplied) {
@@ -496,7 +502,7 @@ function seed() {
     workspaces: [{ id: "w1", name: "Main workspace", desc: "", color: "#00854d", letter: "M" }],
     activeWorkspace: "w1",
     people: [
-      { id: "u1", name: "Gie", title: "Marketing Lead", email: "gie@campaign.co", role: "Owner", color: "#0073ea", avatar: null },
+      { id: "u1", name: "Gie", title: "Marketing Lead", email: "portfoliog1eee@gmail.com", role: "Owner", color: "#0073ea", avatar: null },
       { id: "u2", name: "Andi Pratama", title: "Content Strategist", email: "andi@campaign.co", role: "Admin", color: "#a25ddc", avatar: null },
       { id: "u3", name: "Sari Dewi", title: "Social Media Manager", email: "sari@campaign.co", role: "Member", color: "#00c875", avatar: null },
       { id: "u4", name: "Budi Santoso", title: "Graphic Designer", email: "budi@campaign.co", role: "Member", color: "#fdab3d", avatar: null },
@@ -511,6 +517,10 @@ const wsBoards = () => state.boards.filter(b => b.workspaceId === state.activeWo
 const getBoard = () => state.boards.find(b => b.id === state.activeBoard) || wsBoards()[0] || state.boards[0];
 const personById = (id) => state.people.find(p => p.id === id);
 const me = () => personById(state.user) || state.people[0];
+const ADMIN_EMAIL = "portfoliog1eee@gmail.com";
+// main admin = the owner account (full control: can create workspaces, manage members)
+const isAdmin = () => { const u = me(); return !!u && (u.role === "Owner" || (u.email || "").toLowerCase() === ADMIN_EMAIL); };
+const validEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s || "").trim());
 
 function locateTask(taskId) {
   for (const b of state.boards) {
@@ -926,6 +936,7 @@ function switchWorkspace(id) {
 }
 
 function addWorkspace() {
+  if (!isAdmin()) { toast("Only the workspace admin can create workspaces"); return; }
   modalPrompt("Create workspace", "Workspace name", "", (name) => {
     const color = WS_COLORS[state.workspaces.length % WS_COLORS.length];
     const w = { id: uid(), name, desc: "", color, letter: (name[0] || "W").toUpperCase() };
@@ -976,7 +987,13 @@ function workspaceMenu(anchor) {
     draw();
 
     el.append(h("hr", { class: "dd-sep" }));
-    el.append(ddItem("plus", "Add workspace", () => { close(); addWorkspace(); }));
+    if (isAdmin()) {
+      el.append(ddItem("plus", "Add workspace", () => { close(); addWorkspace(); }));
+    } else {
+      const locked = h("div", { class: "dd-item disabled", title: "Only the workspace admin can create workspaces" },
+        ico("plus", 15), h("span", { style: "flex:1" }, "Add workspace"), ico("gear", 13));
+      el.append(locked);
+    }
     el.append(ddItem("apps", "Browse all", () => { close(); toast("Browse all — coming soon in demo"); }));
   }, { minWidth: 260 });
 }
@@ -1449,50 +1466,95 @@ function removeView(board, vid) {
   render();
 }
 
+const MEMBER_ROLES = ["Admin", "Member", "Viewer"];
+
 function peopleManager(anchor) {
   openDropdown(anchor, (el, close) => {
-    el.append(h("div", { class: "dd-title" }, "Team members"));
+    const admin = isAdmin();
+    el.append(h("div", { class: "dd-title", style: "display:flex;align-items:center;justify-content:space-between" },
+      h("span", {}, "Members · " + state.people.length),
+      admin ? h("span", { class: "ws-role-chip", style: "background:var(--primary-soft);color:var(--primary);border:none" }, "Admin") : null));
+
     for (const p of state.people) {
-      const row = h("div", { class: "dd-item" }, avatarEl(p, 26), h("span", { style: "flex:1" }, p.name + (p.id === state.user ? " (you)" : "")));
+      const isOwner = p.role === "Owner";
+      const row = h("div", { class: "pm-row" }, avatarEl(p, 30),
+        h("div", { class: "pm-info" },
+          h("div", { class: "pm-name" }, p.name + (p.id === state.user ? " (you)" : "")),
+          h("div", { class: "pm-mail" }, p.email)));
+
+      // role: owner fixed; admin can change others; else read-only chip
+      if (!isOwner && admin && p.id !== state.user) {
+        const roleBtn = h("button", { class: "ws-role-chip pm-role-btn" }, p.role || "Member", ico("chevDown", 11));
+        roleBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openDropdown(roleBtn, (dd, c) => {
+            for (const r of MEMBER_ROLES) dd.append(h("div", { class: "dd-item", onclick: () => { p.role = r; save(); c(); peopleManager(anchor); } }, h("span", { style: "flex:1" }, r), p.role === r ? ico("check", 14) : null));
+          }, { minWidth: 140 });
+        });
+        row.append(roleBtn);
+      } else {
+        row.append(h("span", { class: "ws-role-chip" }, isOwner ? "Owner" : (p.role || "Member")));
+      }
+
       const charBtn = h("button", { class: "row-act", title: "Anime character" });
       charBtn.append(ico("smile", 14));
       charBtn.addEventListener("click", (e) => { e.stopPropagation(); characterPicker(charBtn, p, () => peopleManager(anchor)); });
       row.append(charBtn);
-      if (p.id !== state.user) {
-        const del = h("button", { class: "row-act", title: "Remove" });
+
+      if (p.id !== state.user && !isOwner && admin) {
+        const del = h("button", { class: "row-act", title: "Remove member" });
         del.append(ico("x", 13));
         del.addEventListener("click", (e) => {
           e.stopPropagation();
           state.people = state.people.filter(x => x.id !== p.id);
-          for (const b of state.boards) for (const g of b.groups) for (const t of g.tasks) {
-            t.owners = t.owners.filter(o => o !== p.id);
-          }
+          for (const b of state.boards) for (const g of b.groups) for (const t of g.tasks) t.owners = t.owners.filter(o => o !== p.id);
           if (ui.person === p.id) ui.person = null;
-          save();
-          softRender();
-          refreshDd();
+          save(); softRender(); peopleManager(anchor);
         });
         row.append(del);
       }
       el.append(row);
     }
+
     el.append(h("hr", { class: "dd-sep" }));
-    const input = h("input", { type: "text", placeholder: "Teammate name..." });
-    const addBtn = h("button", {}, "Invite");
-    const doAdd = () => {
-      const name = input.value.trim();
-      if (!name) return;
-      state.people.push({ id: uid(), name, title: "Team member", email: name.toLowerCase().replace(/\s+/g, ".").replace(/[^a-z.]/g, "") + "@campaign.co", role: "Member", color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null });
-      input.value = "";
-      save();
-      softRender();
-      refreshDd();
-      toast(`${name} added to the team`);
+    el.append(h("div", { class: "dd-title" }, "Invite by email"));
+
+    const nameIn = h("input", { type: "text", placeholder: "Name (optional)" });
+    const mailIn = h("input", { type: "email", placeholder: "name@email.com" });
+
+    // role selector — only admin can set a role; others invite as Member
+    let inviteRole = "Member";
+    const roleSel = h("button", { class: "pm-invite-role" }, inviteRole, ico("chevDown", 12));
+    if (admin) {
+      roleSel.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openDropdown(roleSel, (dd, c) => {
+          for (const r of MEMBER_ROLES) dd.append(h("div", { class: "dd-item", onclick: () => { inviteRole = r; roleSel.replaceChildren(r, ico("chevDown", 12)); c(); } }, r));
+        }, { minWidth: 130 });
+      });
+    } else {
+      roleSel.classList.add("disabled");
+      roleSel.title = "Only admin can assign roles";
+    }
+
+    const sendBtn = h("button", { class: "btn-primary", style: "padding:7px 14px" }, "Send invite");
+    const doInvite = () => {
+      const email = mailIn.value.trim().toLowerCase();
+      if (!validEmail(email)) { toast("Enter a valid email"); mailIn.focus(); return; }
+      if (state.people.some(p => (p.email || "").toLowerCase() === email)) { toast("That email is already a member"); return; }
+      const name = nameIn.value.trim() || email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      state.people.push({ id: uid(), name, title: "Invited member", email, role: admin ? inviteRole : "Member", color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null, invited: true });
+      nameIn.value = ""; mailIn.value = "";
+      save(); softRender(); peopleManager(anchor);
+      toast(`Invite sent to ${email} (demo)`);
     };
-    addBtn.addEventListener("click", doAdd);
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") doAdd(); e.stopPropagation(); });
-    el.append(h("div", { class: "dd-input-row" }, input, addBtn));
-  }, { minWidth: 260, alignRight: true });
+    sendBtn.addEventListener("click", doInvite);
+    mailIn.addEventListener("keydown", (e) => { if (e.key === "Enter") doInvite(); e.stopPropagation(); });
+    nameIn.addEventListener("keydown", (e) => e.stopPropagation());
+
+    el.append(h("div", { class: "pm-invite" }, nameIn, h("div", { class: "pm-invite-row" }, mailIn, roleSel), sendBtn));
+    el.append(h("div", { class: "pm-note" }, "Invited members can use boards but can't create new workspaces."));
+  }, { minWidth: 300, alignRight: true });
 }
 
 /* ---------------- Render: toolbar ---------------- */
@@ -3231,9 +3293,11 @@ function workspaceHomeEl() {
   const w = getWorkspace();
   const root = h("div", { class: "view-root wh" });
   root.append(h("div", { class: "wh-banner" }));
-  if ((state.skin || "default") === "frieren") {
-    const hero = h("img", { class: "wh-hero", src: WH_HERO, alt: "" });
-    hero.addEventListener("error", () => hero.remove());
+  // hero portrait mirrors the current user's profile character; updates when you change it
+  const heroOn = (state.skin || "default") === "frieren";
+  if (heroOn) {
+    const hero = h("img", { class: "wh-hero", src: me().avatar || WH_HERO, alt: "" });
+    hero.addEventListener("error", () => { hero.remove(); const hd = root.querySelector(".wh-head"); if (hd) hd.classList.remove("has-hero"); });
     root.append(hero);
   }
   const body = h("div", { class: "wh-body" });
@@ -3268,7 +3332,7 @@ function workspaceHomeEl() {
     whAction("agent", "Agents", () => toast("Agents — coming soon in demo")),
     membersBtn);
 
-  body.append(h("div", { class: "wh-head" }, logo, titles, actions));
+  body.append(h("div", { class: "wh-head" + (heroOn ? " has-hero" : "") }, logo, titles, actions));
 
   const tabs = h("div", { class: "wh-tabs" });
   const TABS = [["recents", "Recents", "calendar"], ["content", "Content", "apps"], ["collaborators", "Collaborators", "person"], ["permissions", "Permissions", "gear"]];
