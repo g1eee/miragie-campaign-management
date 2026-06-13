@@ -357,6 +357,7 @@ function migrate() {
   }
   if (adminPerson) adminPerson.role = "Owner";
   if (!state.skin) state.skin = "frieren";
+  if (!state.palette) state.palette = "sakura";
   // one-time: give members anime character avatars (user-supplied art)
   if (!state.animeApplied) {
     state.people.forEach((p, i) => { if (!p.avatar) p.avatar = ANIME_CHARS[i % ANIME_CHARS.length].img; });
@@ -985,10 +986,14 @@ const ANIME_CHARS = [
 // hero portrait on workspace home — falls back to first available char art
 const WH_HERO = "assets/characters/frieren.png";
 
-// Decorative theme imagery — user-supplied files in assets/theme/ (see README there)
-const DECO_IMG = {
-  login: "assets/theme/login.jpg",
-};
+// Soft Japanese palette options for the anime theme
+const PALETTES = [
+  { id: "sakura", name: "Sakura", dot: "#d96a8f" },
+  { id: "matcha", name: "Matcha", dot: "#5b8c6e" },
+  { id: "sora",   name: "Sora · sky", dot: "#4f8bb3" },
+  { id: "fuji",   name: "Fuji · wisteria", dot: "#7d78c4" },
+  { id: "kinari", name: "Kinari · beige", dot: "#a9885f" },
+];
 
 // pick readable glyph color (dark on pastel/light, white on saturated)
 function textColorOn(hex) {
@@ -1208,10 +1213,7 @@ function renderAuthGate() {
   if (!gate) { gate = h("div", { id: "auth-gate" }); document.body.appendChild(gate); }
   gate.replaceChildren();
 
-  // decorative character (white bg blended away) + falling spores
-  const gchar = h("img", { class: "auth-char", src: DECO_IMG.login, alt: "" });
-  gchar.addEventListener("error", () => gchar.remove());
-  gate.append(gchar);
+  // falling spores over the soft gradient
   const gsak = h("div", { class: "sakura sakura-gate" });
   for (let i = 0; i < 12; i++) gsak.append(h("span", { class: "petal" }));
   gate.append(gsak);
@@ -1308,6 +1310,7 @@ function applyRefocus() {
 function renderTopbar() {
   document.documentElement.dataset.theme = state.theme;
   document.documentElement.dataset.skin = state.skin || "default";
+  document.documentElement.dataset.palette = state.palette || "sakura";
   const themeBtn = q("#theme-btn");
   themeBtn.replaceChildren(ico(state.theme === "light" ? "moon" : "sun", 17));
   const bell = q("#bell-btn");
@@ -3648,6 +3651,17 @@ function characterPicker(anchor, person, after) {
   }, { minWidth: 230 });
 }
 
+// pick a soft Japanese color palette for the anime theme
+function palettePicker(anchor) {
+  openDropdown(anchor, (el, close) => {
+    el.append(h("div", { class: "dd-title" }, "Theme palette"));
+    for (const p of PALETTES) {
+      el.append(h("div", { class: "dd-item", onclick: () => { state.palette = p.id; if (state.skin !== "frieren") state.skin = "frieren"; save(); close(); render(); toast(`Palette: ${p.name}`); } },
+        h("span", { class: "pal-dot", style: `background:${p.dot}` }), h("span", { style: "flex:1" }, p.name), state.palette === p.id ? ico("check", 14) : null));
+    }
+  }, { minWidth: 200 });
+}
+
 /* ---- Feature 4: collaborators ---- */
 function whCollaborators() {
   const grid = h("div", { class: "wh-collab" });
@@ -4780,6 +4794,12 @@ function profileMenu(anchor) {
       state.skin = state.skin === "frieren" ? "default" : "frieren"; save(); close(); render();
       toast(state.skin === "frieren" ? "Anime theme on" : "Anime theme off");
     }));
+    if (state.skin === "frieren") {
+      const palName = (PALETTES.find(p => p.id === state.palette) || PALETTES[0]).name;
+      const palItem = ddItem("smile", "Theme palette: " + palName, () => { close(); palettePicker(anchor); });
+      palItem.querySelector(".ico").replaceWith(h("span", { class: "pal-dot", style: `background:${(PALETTES.find(p => p.id === state.palette) || PALETTES[0]).dot}` }));
+      el.append(palItem);
+    }
     el.append(ddItem(state.theme === "light" ? "moon" : "sun", state.theme === "light" ? "Dark mode" : "Light mode", () => {
       state.theme = state.theme === "light" ? "dark" : "light"; save(); close(); render();
     }));

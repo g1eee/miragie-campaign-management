@@ -2014,73 +2014,80 @@ input, textarea, select {
 .wf-stat { border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
 .wf-stat-num { font-size: 26px; font-weight: 800; }
 
-/* ============ Anime skin: Frieren (scoped to topbar + sidebar + workspace home) ============ */
-[data-skin="frieren"] #topbar,
-[data-skin="frieren"] #sidebar,
-[data-skin="frieren"] .wh {
-  --surface: #eef4ef;
-  --surface-2: #e0ebe2;
-  --primary: #4f8a63;
-  --primary-hover: #3f7251;
-  --primary-soft: rgba(79, 138, 99, 0.12);
-  --primary-selected: #d8eadd;
-  --border: #dfe8e0;
-  --border-2: #cfddd2;
-}
-[data-theme="dark"][data-skin="frieren"] #topbar,
-[data-theme="dark"][data-skin="frieren"] #sidebar,
-[data-theme="dark"][data-skin="frieren"] .wh {
-  --surface: #1a241d;
-  --surface-2: #243228;
-  --primary: #8fce9f;
-  --primary-selected: #2a3c2f;
-  --primary-soft: rgba(143, 206, 159, 0.18);
-  --border: #2e3e34;
-  --border-2: #3c4e42;
-}
-
-[data-skin="frieren"] #topbar {
-  background:
-    linear-gradient(90deg, rgba(232,242,250,.45), rgba(225,238,250,.34) 60%, rgba(232,242,250,.45)),
-    url("assets/theme/header.jpg") center 32%/cover no-repeat;
-  border-bottom-color: #cfe0ec;
-}
-[data-skin="frieren"] .logo-text b { color: #3f6f8c; }
-[data-skin="frieren"] #topbar .logo-text, [data-skin="frieren"] #topbar .logo-text em { text-shadow: 0 1px 2px rgba(255,255,255,.6); }
-[data-theme="dark"][data-skin="frieren"] #topbar {
-  background:
-    linear-gradient(90deg, rgba(20,30,40,.78), rgba(18,28,40,.66) 60%, rgba(20,30,40,.78)),
-    url("assets/theme/header.jpg") center 32%/cover no-repeat;
-  border-bottom-color: #2a3a48;
-}
-
-[data-skin="frieren"] #sidebar {
-  background:
-    linear-gradient(180deg, rgba(233,242,250,.90) 0%, rgba(231,240,249,.86) 42%, rgba(231,240,249,.30) 100%),
-    url("assets/theme/sidebar.jpg") center bottom/cover no-repeat;
-  border-right-color: #cfe0ec;
-}
-[data-theme="dark"][data-skin="frieren"] #sidebar {
-  background:
-    linear-gradient(180deg, rgba(19,28,38,.92) 0%, rgba(18,26,36,.88) 42%, rgba(18,26,36,.38) 100%),
-    url("assets/theme/sidebar.jpg") center bottom/cover no-repeat;
-  border-right-color: #2a3a48;
-}
+/* ============ Soft Japanese palette themes (scoped to topbar + sidebar + workspace home) ============ */
+/* Generic: regions consume palette vars; palette blocks below set them. */
+[data-skin="frieren"] #topbar { background: linear-gradient(90deg, var(--th-bar-a), var(--th-bar-b)); border-bottom-color: var(--border); }
+[data-skin="frieren"] #sidebar { background: linear-gradient(180deg, var(--th-side-a), var(--th-side-b)); border-right-color: var(--border); }
+[data-skin="frieren"] .wh-banner { background: linear-gradient(120deg, var(--th-ban-a), var(--th-ban-b) 55%, var(--th-ban-c)); }
+[data-skin="frieren"] .logo-text b { color: var(--primary); }
 [data-skin="frieren"] .side-item, [data-skin="frieren"] .ws-chip { border-radius: 10px; }
-[data-skin="frieren"] .side-item.active { color: #3f7251; font-weight: 600; }
-[data-theme="dark"][data-skin="frieren"] .side-item.active { color: #a9e0b6; }
+[data-skin="frieren"] .side-item.active { color: var(--primary-hover); font-weight: 600; }
+[data-theme="dark"][data-skin="frieren"] .side-item.active { color: var(--primary); }
 
-/* Ghibli green-hills cover photo on the workspace banner */
-[data-skin="frieren"] .wh-banner {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.16)),
-    url("assets/theme/banner.jpg") center 42%/cover no-repeat;
+/* --- LIGHT palettes (default = Sakura) --- */
+[data-skin="frieren"] #topbar, [data-skin="frieren"] #sidebar, [data-skin="frieren"] .wh {
+  --surface: #fdf4f7; --surface-2: #f7e6ec;
+  --primary: #d96a8f; --primary-hover: #c2557a; --primary-soft: rgba(217,106,143,.12); --primary-selected: #f6dde7;
+  --border: #f0dce4; --border-2: #e6cad5;
+  --th-bar-a: #fdeef3; --th-bar-b: #fbe3ec;
+  --th-side-a: #fdf1f5; --th-side-b: #fae6ee;
+  --th-ban-a: #fbe0ea; --th-ban-b: #fdeef0; --th-ban-c: #fff5f1;
 }
-[data-theme="dark"][data-skin="frieren"] .wh-banner {
-  background:
-    linear-gradient(180deg, rgba(18,26,22,.30), rgba(18,26,22,.45)),
-    url("assets/theme/banner.jpg") center 42%/cover no-repeat;
+[data-skin="frieren"][data-palette="matcha"] #topbar, [data-skin="frieren"][data-palette="matcha"] #sidebar, [data-skin="frieren"][data-palette="matcha"] .wh {
+  --surface: #eef4ef; --surface-2: #e1ebe3;
+  --primary: #5b8c6e; --primary-hover: #487257; --primary-soft: rgba(91,140,110,.12); --primary-selected: #dcebdf;
+  --border: #dde8df; --border-2: #cdddd1;
+  --th-bar-a: #eef5f0; --th-bar-b: #e3eee7;
+  --th-side-a: #eff5f1; --th-side-b: #e4efe7;
+  --th-ban-a: #dcebdf; --th-ban-b: #eef4ea; --th-ban-c: #f4f7ee;
 }
+[data-skin="frieren"][data-palette="sora"] #topbar, [data-skin="frieren"][data-palette="sora"] #sidebar, [data-skin="frieren"][data-palette="sora"] .wh {
+  --surface: #eef5fa; --surface-2: #ddecf5;
+  --primary: #4f8bb3; --primary-hover: #3f7298; --primary-soft: rgba(79,139,179,.12); --primary-selected: #d9eaf4;
+  --border: #d7e6ef; --border-2: #c6dbe8;
+  --th-bar-a: #eef6fb; --th-bar-b: #e0eef8;
+  --th-side-a: #eff6fb; --th-side-b: #e2eff8;
+  --th-ban-a: #d9eaf4; --th-ban-b: #eaf3fa; --th-ban-c: #f2f8fc;
+}
+[data-skin="frieren"][data-palette="fuji"] #topbar, [data-skin="frieren"][data-palette="fuji"] #sidebar, [data-skin="frieren"][data-palette="fuji"] .wh {
+  --surface: #f2f1fb; --surface-2: #e7e5f5;
+  --primary: #7d78c4; --primary-hover: #6661ad; --primary-soft: rgba(125,120,196,.12); --primary-selected: #e6e3f6;
+  --border: #e3e1f0; --border-2: #d3d0e8;
+  --th-bar-a: #f3f1fc; --th-bar-b: #e9e6f7;
+  --th-side-a: #f3f2fc; --th-side-b: #eae7f7;
+  --th-ban-a: #e6e2f6; --th-ban-b: #f0edfa; --th-ban-c: #f6f1f8;
+}
+[data-skin="frieren"][data-palette="kinari"] #topbar, [data-skin="frieren"][data-palette="kinari"] #sidebar, [data-skin="frieren"][data-palette="kinari"] .wh {
+  --surface: #f8f3ea; --surface-2: #efe7d8;
+  --primary: #a9885f; --primary-hover: #8f7049; --primary-soft: rgba(169,136,95,.12); --primary-selected: #efe6d6;
+  --border: #ece2d2; --border-2: #ddd0bb;
+  --th-bar-a: #f9f4ec; --th-bar-b: #f1e8da;
+  --th-side-a: #f9f4ec; --th-side-b: #f2e9db;
+  --th-ban-a: #efe5d4; --th-ban-b: #f7f0e3; --th-ban-c: #fbf5ea;
+}
+
+/* --- DARK: neutral dark surfaces, per-palette accent --- */
+[data-theme="dark"][data-skin="frieren"] #topbar, [data-theme="dark"][data-skin="frieren"] #sidebar, [data-theme="dark"][data-skin="frieren"] .wh {
+  --surface: #1b2026; --surface-2: #252b33; --border: #2c333d; --border-2: #3a414c;
+  --th-bar-a: #1b2026; --th-bar-b: #20262e;
+  --th-side-a: #1a1f25; --th-side-b: #181c22;
+  --th-ban-a: #222a33; --th-ban-b: #1d232b; --th-ban-c: #262d37;
+  --primary: #e89bb4; --primary-hover: #e89bb4; --primary-soft: rgba(232,155,180,.18); --primary-selected: #3a2a31;
+}
+[data-theme="dark"][data-skin="frieren"][data-palette="matcha"] #topbar, [data-theme="dark"][data-skin="frieren"][data-palette="matcha"] #sidebar, [data-theme="dark"][data-skin="frieren"][data-palette="matcha"] .wh {
+  --primary: #8fce9f; --primary-hover: #8fce9f; --primary-soft: rgba(143,206,159,.18); --primary-selected: #2a3c2f;
+}
+[data-theme="dark"][data-skin="frieren"][data-palette="sora"] #topbar, [data-theme="dark"][data-skin="frieren"][data-palette="sora"] #sidebar, [data-theme="dark"][data-skin="frieren"][data-palette="sora"] .wh {
+  --primary: #7fc0e6; --primary-hover: #7fc0e6; --primary-soft: rgba(127,192,230,.18); --primary-selected: #233846;
+}
+[data-theme="dark"][data-skin="frieren"][data-palette="fuji"] #topbar, [data-theme="dark"][data-skin="frieren"][data-palette="fuji"] #sidebar, [data-theme="dark"][data-skin="frieren"][data-palette="fuji"] .wh {
+  --primary: #b0acf0; --primary-hover: #b0acf0; --primary-soft: rgba(176,172,240,.18); --primary-selected: #2f2c4a;
+}
+[data-theme="dark"][data-skin="frieren"][data-palette="kinari"] #topbar, [data-theme="dark"][data-skin="frieren"][data-palette="kinari"] #sidebar, [data-theme="dark"][data-skin="frieren"][data-palette="kinari"] .wh {
+  --primary: #d6b483; --primary-hover: #d6b483; --primary-soft: rgba(214,180,131,.18); --primary-selected: #3a3327;
+}
+
+.pal-dot { width: 14px; height: 14px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
 
 /* hero character portrait (workspace home) — framed for square chibi art */
 .wh { position: relative; }
@@ -2123,9 +2130,9 @@ html.gated, html.gated body { overflow: hidden; }
 #auth-gate {
   position: fixed; inset: 0; z-index: 9999;
   display: flex; align-items: center; justify-content: center; padding: 24px;
-  background: linear-gradient(135deg, #e8f1e9 0%, #dceae6 50%, #eef4ec 100%);
+  background: linear-gradient(135deg, #fdf0f4 0%, #eef3fb 50%, #f5eef8 100%);
 }
-[data-theme="dark"] #auth-gate { background: linear-gradient(135deg, #16201b 0%, #14201e 55%, #1a2620 100%); }
+[data-theme="dark"] #auth-gate { background: linear-gradient(135deg, #1c1922 0%, #181f2a 55%, #201a26 100%); }
 .auth-card {
   width: 100%; max-width: 380px; background: var(--bg); border: 1px solid var(--border);
   border-radius: 16px; box-shadow: 0 20px 60px rgba(60, 40, 110, 0.25);
@@ -2189,12 +2196,6 @@ html.gated, html.gated body { overflow: hidden; }
 .sakura .petal:nth-child(12) { left: 95%; animation-duration: 7.8s; animation-delay: 2.3s; width: 11px; height: 11px; }
 @media (prefers-reduced-motion: reduce) { .sakura { display: none; } }
 
-/* login screen: blended character + falling spores */
-.auth-char {
-  position: fixed; right: 5%; bottom: 0; height: min(76vh, 600px); width: auto;
-  object-fit: contain; mix-blend-mode: multiply; pointer-events: none; z-index: 1;
-}
-[data-theme="dark"] .auth-char { mix-blend-mode: lighten; opacity: .9; }
-.sakura-gate { position: fixed; inset: 0; height: 100%; --fall: 100vh; z-index: 2; }
+/* login screen: falling spores over soft gradient */
+.sakura-gate { position: fixed; inset: 0; height: 100%; --fall: 100vh; z-index: 1; }
 #auth-gate .auth-card { position: relative; z-index: 3; }
-@media (max-width: 820px) { .auth-char { display: none; } }
