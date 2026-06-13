@@ -454,6 +454,14 @@ input, textarea, select {
   position: relative;
 }
 .cell.check-col { border-left: none; justify-content: center; }
+
+/* Freeze pane: pin the checkbox + Item (name) columns while scrolling sideways */
+.board-canvas .cell.check-col,
+.board-canvas .cell.name-col { position: sticky; z-index: 2; background: inherit; }
+.board-canvas .cell.check-col { left: 0; }
+.board-canvas .cell.name-col { left: 36px; box-shadow: 6px 0 8px -6px rgba(0, 0, 0, .14); }
+.board-canvas .head-row .cell.check-col,
+.board-canvas .head-row .cell.name-col { z-index: 4; }
 .cell.center { justify-content: center; }
 .cell.add-col { color: var(--text-2); justify-content: center; cursor: pointer; }
 .cell.add-col:hover { background: var(--surface-2); }

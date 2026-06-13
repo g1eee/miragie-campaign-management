@@ -252,16 +252,23 @@ function save() {
 
 function cloudOn() { return typeof window !== "undefined" && window.CLOUD && window.CLOUD.available(); }
 
+let cloudUserId = null;
 function initCloud() {
   if (!cloudOn()) return;
   window.CLOUD.init(async (u) => {
     ui.authResolved = true;
+    // Supabase re-fires this on token refresh / tab refocus. Only react when the
+    // signed-in user actually CHANGES — otherwise we'd reload state and bounce the
+    // user back to Workspace home mid-work.
+    const sameUser = u && cloudUserId === u.id;
+    cloudUserId = u ? u.id : null;
+    if (sameUser) return;
     ui.noAccess = false;
     if (u) {
       const team = await window.CLOUD.loadTeam();
       if (team && Array.isArray(team.boards)) {
         state = team; migrate(); reconcileIdentity(); saveLocal();
-        ui.home = true;   // land on Workspace home after sign-in
+        ui.home = true;   // land on Workspace home on first sign-in
         render();
         toast("☁ Team workspace loaded");
         return;
