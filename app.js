@@ -985,9 +985,9 @@ const ANIME_CHARS = [
 // hero portrait on workspace home — falls back to first available char art
 const WH_HERO = "assets/characters/frieren.png";
 
-// Decorative imagery (Unsplash) — Ghibli-style green landscapes, NOT the avatar assets
+// Decorative theme imagery — user-supplied files in assets/theme/ (see README there)
 const DECO_IMG = {
-  login: "https://images.unsplash.com/photo-1713669374349-3a240c47f727?w=1400&q=80&auto=format&fit=crop",
+  login: "assets/theme/login.jpg",
 };
 
 // pick readable glyph color (dark on pastel/light, white on saturated)

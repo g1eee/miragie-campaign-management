@@ -2042,27 +2042,27 @@ input, textarea, select {
 [data-skin="frieren"] #topbar {
   background:
     linear-gradient(90deg, rgba(247,249,246,.92), rgba(236,242,238,.88) 60%, rgba(242,246,243,.92)),
-    url("https://images.unsplash.com/photo-1651536085184-4a3b2a03e79a?w=1400&q=70&auto=format&fit=crop") center 40%/cover no-repeat;
+    url("assets/theme/header.jpg") center 40%/cover no-repeat;
   border-bottom-color: #dfe8e0;
 }
 [data-skin="frieren"] .logo-text b { color: #4f7a5e; }
 [data-theme="dark"][data-skin="frieren"] #topbar {
   background:
     linear-gradient(90deg, rgba(24,32,27,.93), rgba(22,30,28,.9) 60%, rgba(26,34,28,.93)),
-    url("https://images.unsplash.com/photo-1651536085184-4a3b2a03e79a?w=1400&q=70&auto=format&fit=crop") center 40%/cover no-repeat;
+    url("assets/theme/header.jpg") center 40%/cover no-repeat;
   border-bottom-color: #2e3e34;
 }
 
 [data-skin="frieren"] #sidebar {
   background:
     linear-gradient(180deg, rgba(245,249,246,.93), rgba(236,243,238,.95)),
-    url("https://images.unsplash.com/photo-1713669374349-3a240c47f727?w=700&q=70&auto=format&fit=crop") center/cover no-repeat;
+    url("assets/theme/sidebar.jpg") center/cover no-repeat;
   border-right-color: #dfe8e0;
 }
 [data-theme="dark"][data-skin="frieren"] #sidebar {
   background:
     linear-gradient(180deg, rgba(23,31,26,.95), rgba(20,28,24,.97)),
-    url("https://images.unsplash.com/photo-1713669374349-3a240c47f727?w=700&q=70&auto=format&fit=crop") center/cover no-repeat;
+    url("assets/theme/sidebar.jpg") center/cover no-repeat;
   border-right-color: #2e3e34;
 }
 [data-skin="frieren"] .side-item, [data-skin="frieren"] .ws-chip { border-radius: 10px; }
@@ -2073,12 +2073,12 @@ input, textarea, select {
 [data-skin="frieren"] .wh-banner {
   background:
     linear-gradient(120deg, rgba(237,245,238,.34), rgba(232,242,236,.18) 55%, rgba(240,246,241,.36)),
-    url("https://images.unsplash.com/photo-1651536085184-4a3b2a03e79a?w=1600&q=75&auto=format&fit=crop") center 45%/cover no-repeat;
+    url("assets/theme/banner.jpg") center 45%/cover no-repeat;
 }
 [data-theme="dark"][data-skin="frieren"] .wh-banner {
   background:
     linear-gradient(120deg, rgba(22,30,25,.60), rgba(20,28,26,.44) 55%, rgba(24,32,26,.60)),
-    url("https://images.unsplash.com/photo-1651536085184-4a3b2a03e79a?w=1600&q=75&auto=format&fit=crop") center 45%/cover no-repeat;
+    url("assets/theme/banner.jpg") center 45%/cover no-repeat;
 }
 
 /* hero character portrait (workspace home) — framed for square chibi art */
