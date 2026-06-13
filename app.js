@@ -2444,7 +2444,8 @@ function textCellEl(task, col) {
 function numberCellEl(task, col) {
   const cell = h("div", { class: "cell", style: "justify-content:flex-end" });
   const v = task.cells[col.id];
-  const span = h("span", { style: "padding:2px 6px;cursor:text;border-radius:4px" }, v != null ? String(v) : "");
+  const empty = v == null || v === "";
+  const span = h("span", { class: "num-val" + (empty ? " num-hint" : ""), style: "padding:2px 6px;cursor:text;border-radius:4px" }, empty ? "123" : String(v));
   span.addEventListener("click", () => {
     const input = h("input", { class: "inline-input", type: "number", value: v != null ? String(v) : "", style: "text-align:right" });
     cell.replaceChildren(input); input.focus(); input.select();
@@ -2618,6 +2619,14 @@ function taskRowEl(board, group, task, tpl, cols) {
   if (hasUpd) chat.append(h("span", {}, task.updates.length));
   chat.addEventListener("click", (e) => { e.stopPropagation(); ui.panel = task.id; renderPanel(); });
   nameCell.append(chat);
+  // file/image attachment indicator — coloured when the item has files
+  const nFiles = (task.files || []).length;
+  if (nFiles) {
+    const fchip = h("button", { class: "files-chip has", title: `${nFiles} file(s)` });
+    fchip.append(ico("paperclip", 13), h("span", {}, nFiles));
+    fchip.addEventListener("click", (e) => { e.stopPropagation(); ui.panel = task.id; renderPanel(); });
+    nameCell.append(fchip);
+  }
   nameCell.append(h("span", { class: "row-actions" }, openBtn, rowMenuBtn));
   row.append(nameCell);
 

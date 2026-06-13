@@ -506,6 +506,19 @@ input, textarea, select {
 .updates-chip:hover { background: var(--surface-2); color: var(--primary); }
 .updates-chip.has:hover { background: var(--primary-soft); }
 
+/* file/image attachment indicator on item rows */
+.files-chip {
+  display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700;
+  padding: 2px 5px; border-radius: 12px; flex: none;
+  color: #00a884; background: rgba(0, 168, 132, .12);
+}
+.files-chip:hover { background: rgba(0, 168, 132, .2); }
+
+/* empty Numbers cell hint (monday-style "+ 123") */
+.num-hint { color: var(--text-2); opacity: 0; transition: opacity .1s; }
+.num-hint::before { content: "+ "; font-weight: 600; }
+.g-row:hover .num-hint { opacity: .45; }
+
 .drag-handle {
   position: absolute;
   left: 2px;
