@@ -1208,10 +1208,10 @@ function renderAuthGate() {
   if (!gate) { gate = h("div", { id: "auth-gate" }); document.body.appendChild(gate); }
   gate.replaceChildren();
 
-  // cherry-blossom background photo (Unsplash) + soft overlay + falling petals
-  const bg = h("img", { class: "auth-bg", src: DECO_IMG.login, alt: "" });
-  bg.addEventListener("error", () => bg.remove());
-  gate.append(bg, h("div", { class: "auth-overlay" }));
+  // decorative character (white bg blended away) + falling spores
+  const gchar = h("img", { class: "auth-char", src: DECO_IMG.login, alt: "" });
+  gchar.addEventListener("error", () => gchar.remove());
+  gate.append(gchar);
   const gsak = h("div", { class: "sakura sakura-gate" });
   for (let i = 0; i < 12; i++) gsak.append(h("span", { class: "petal" }));
   gate.append(gsak);
