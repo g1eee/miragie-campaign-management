@@ -342,12 +342,18 @@ function migrate() {
     if (!p.email) p.email = (p.name || "user").toLowerCase().replace(/\s+/g, ".").replace(/[^a-z.]/g, "") + "@campaign.co";
     if (!p.role) p.role = p.id === state.user ? "Owner" : "Member";
   }
-  // the active account is the main admin/owner
-  const owner = state.people.find(p => p.id === state.user);
-  if (owner) {
-    owner.role = "Owner";
-    if (!owner.email || owner.email === "gie@campaign.co") owner.email = ADMIN_EMAIL;
+  // Ownership is tied to the admin EMAIL, never to whoever is currently signed in.
+  // (In the shared team blob, state.user changes per member — must not grant Owner.)
+  for (const p of state.people) {
+    if (p.role === "Owner" && (p.email || "").toLowerCase() !== ADMIN_EMAIL) p.role = "Member";
   }
+  let adminPerson = state.people.find(p => (p.email || "").toLowerCase() === ADMIN_EMAIL);
+  if (!adminPerson) {
+    // backfill: the legacy seed owner (u1) with the old placeholder email becomes admin
+    adminPerson = state.people.find(p => p.id === "u1" || p.email === "gie@campaign.co");
+    if (adminPerson) adminPerson.email = ADMIN_EMAIL;
+  }
+  if (adminPerson) adminPerson.role = "Owner";
   if (!state.skin) state.skin = "frieren";
   // one-time: give members anime character avatars (user-supplied art)
   if (!state.animeApplied) {
