@@ -2013,3 +2013,69 @@ input, textarea, select {
 .wf-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; }
 .wf-stat { border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
 .wf-stat-num { font-size: 26px; font-weight: 800; }
+
+/* ============ Anime skin: Frieren (scoped to topbar + sidebar + workspace home) ============ */
+[data-skin="frieren"] #topbar,
+[data-skin="frieren"] #sidebar,
+[data-skin="frieren"] .wh {
+  --surface: #f5f0fb;
+  --surface-2: #e9e0f7;
+  --primary: #8a6fbf;
+  --primary-hover: #75599f;
+  --primary-soft: rgba(138, 111, 191, 0.12);
+  --primary-selected: #e3d8f5;
+  --border: #e6ddf2;
+  --border-2: #d8ccec;
+}
+[data-theme="dark"][data-skin="frieren"] #topbar,
+[data-theme="dark"][data-skin="frieren"] #sidebar,
+[data-theme="dark"][data-skin="frieren"] .wh {
+  --surface: #211a36;
+  --surface-2: #2c2348;
+  --primary: #b79ce6;
+  --primary-selected: #382c5c;
+  --primary-soft: rgba(183, 156, 230, 0.18);
+  --border: #382e55;
+  --border-2: #463a66;
+}
+
+[data-skin="frieren"] #topbar { background: linear-gradient(90deg, #f8f4fc, #efe7f9 60%, #f3eefc); border-bottom-color: #e6ddf2; }
+[data-skin="frieren"] .logo-text b { color: #7a62ac; }
+[data-theme="dark"][data-skin="frieren"] #topbar { background: linear-gradient(90deg, #20182f, #1c1b3a 60%, #241a36); border-bottom-color: #382e55; }
+
+[data-skin="frieren"] #sidebar { background: linear-gradient(180deg, #f6f1fc, #efe8f9); border-right-color: #e6ddf2; }
+[data-theme="dark"][data-skin="frieren"] #sidebar { background: linear-gradient(180deg, #1f1833, #1a1730); border-right-color: #382e55; }
+[data-skin="frieren"] .side-item, [data-skin="frieren"] .ws-chip { border-radius: 10px; }
+[data-skin="frieren"] .side-item.active { color: #5b4a86; font-weight: 600; }
+[data-theme="dark"][data-skin="frieren"] .side-item.active { color: #d9ccf5; }
+
+/* soft pastel blobs on workspace banner */
+[data-skin="frieren"] .wh-banner {
+  background:
+    radial-gradient(120px 120px at 16% 62%, rgba(196, 165, 224, 0.55), transparent 70%),
+    radial-gradient(80px 80px at 28% 28%, rgba(222, 204, 242, 0.65), transparent 70%),
+    radial-gradient(170px 170px at 72% 48%, rgba(170, 140, 210, 0.32), transparent 70%),
+    linear-gradient(120deg, #efe7fb 0%, #f3edfa 55%, #f7eef9 100%);
+}
+[data-theme="dark"][data-skin="frieren"] .wh-banner {
+  background:
+    radial-gradient(150px 150px at 72% 50%, rgba(130, 95, 185, 0.4), transparent 70%),
+    linear-gradient(120deg, #241b3a, #1d2147 60%, #2a1d40);
+}
+
+/* hero character image (workspace home) */
+.wh { position: relative; }
+.wh-hero {
+  position: absolute; right: 44px; top: -10px; height: 300px; max-width: 44%;
+  object-fit: contain; object-position: bottom right; pointer-events: none;
+  filter: drop-shadow(0 18px 30px rgba(90, 60, 140, 0.28)); z-index: 1;
+}
+[data-skin="frieren"] .wh-body { position: relative; z-index: 2; }
+@media (max-width: 1100px) { .wh-hero { display: none; } }
+
+/* character thumbnail (picker) */
+.char-thumb {
+  width: 26px; height: 26px; border-radius: 6px; overflow: hidden; flex: none;
+  display: inline-flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--text-2);
+}
+.char-thumb img { width: 100%; height: 100%; object-fit: cover; }

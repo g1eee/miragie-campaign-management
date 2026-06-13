@@ -326,6 +326,12 @@ function migrate() {
     if (!p.email) p.email = (p.name || "user").toLowerCase().replace(/\s+/g, ".").replace(/[^a-z.]/g, "") + "@campaign.co";
     if (!p.role) p.role = p.id === state.user ? "Owner" : "Member";
   }
+  if (!state.skin) state.skin = "frieren";
+  // one-time: give members anime character avatars (user-supplied art)
+  if (!state.animeApplied) {
+    state.people.forEach((p, i) => { if (!p.avatar) p.avatar = ANIME_CHARS[i % ANIME_CHARS.length].img; });
+    state.animeApplied = true;
+  }
   for (const b of state.boards) {
     if (!b.workspaceId) b.workspaceId = state.workspaces[0].id;
     if (!b.kind) b.kind = "board";
@@ -885,6 +891,15 @@ const WS_COLORS = ["#00854d", "#0073ea", "#a25ddc", "#e2445c", "#fdab3d", "#0086
 const WS_PASTEL = ["#ffd1d1", "#ffe0c2", "#fff1bf", "#d6f5cf", "#c2eede", "#cfe6ff", "#d7d6ff", "#ebd6ff", "#ffd6ef", "#e2e5ea"];
 const WS_ICONS = ["table", "dashboard", "kanban", "calendar", "chart", "target", "bolt", "vibe", "folder", "agent", "form", "doc"];
 
+// Anime (Frieren) character assets — files supplied by user in assets/characters/
+const ANIME_CHARS = [
+  { id: "frieren", name: "Frieren", img: "assets/characters/frieren.png" },
+  { id: "fern",    name: "Fern",    img: "assets/characters/fern.png" },
+  { id: "stark",   name: "Stark",   img: "assets/characters/stark.png" },
+  { id: "himmel",  name: "Himmel",  img: "assets/characters/himmel.png" },
+];
+const WH_HERO = "assets/characters/hero.png";
+
 // pick readable glyph color (dark on pastel/light, white on saturated)
 function textColorOn(hex) {
   if (!hex || hex[0] !== "#" || hex.length < 7) return "#fff";
@@ -1100,6 +1115,7 @@ function applyRefocus() {
 
 function renderTopbar() {
   document.documentElement.dataset.theme = state.theme;
+  document.documentElement.dataset.skin = state.skin || "default";
   const themeBtn = q("#theme-btn");
   themeBtn.replaceChildren(ico(state.theme === "light" ? "moon" : "sun", 17));
   const bell = q("#bell-btn");
@@ -1111,8 +1127,17 @@ function renderTopbar() {
 function avatarEl(person, size = 26) {
   if (!person) return h("span", { class: "avatar-empty" }, ico("person", 14));
   if (person.avatar) {
-    return h("span", { class: "avatar has-photo", title: person.name, style: `width:${size}px;height:${size}px` },
-      h("img", { src: person.avatar, alt: person.name }));
+    const wrap = h("span", { class: "avatar has-photo", title: person.name, style: `width:${size}px;height:${size}px` });
+    const img = h("img", { src: person.avatar, alt: person.name });
+    // missing/broken image (e.g. asset not supplied yet) → fall back to initials
+    img.addEventListener("error", () => {
+      wrap.classList.remove("has-photo");
+      wrap.style.background = person.color;
+      wrap.style.fontSize = Math.round(size * 0.4) + "px";
+      wrap.replaceChildren(initials(person.name));
+    });
+    wrap.append(img);
+    return wrap;
   }
   return h("span", { class: "avatar", title: person.name, style: `background:${person.color};width:${size}px;height:${size}px;font-size:${Math.round(size * 0.4)}px` }, initials(person.name));
 }
@@ -1427,6 +1452,10 @@ function peopleManager(anchor) {
     el.append(h("div", { class: "dd-title" }, "Team members"));
     for (const p of state.people) {
       const row = h("div", { class: "dd-item" }, avatarEl(p, 26), h("span", { style: "flex:1" }, p.name + (p.id === state.user ? " (you)" : "")));
+      const charBtn = h("button", { class: "row-act", title: "Anime character" });
+      charBtn.append(ico("smile", 14));
+      charBtn.addEventListener("click", (e) => { e.stopPropagation(); characterPicker(charBtn, p, () => peopleManager(anchor)); });
+      row.append(charBtn);
       if (p.id !== state.user) {
         const del = h("button", { class: "row-act", title: "Remove" });
         del.append(ico("x", 13));
@@ -3200,6 +3229,11 @@ function workspaceHomeEl() {
   const w = getWorkspace();
   const root = h("div", { class: "view-root wh" });
   root.append(h("div", { class: "wh-banner" }));
+  if ((state.skin || "default") === "frieren") {
+    const hero = h("img", { class: "wh-hero", src: WH_HERO, alt: "" });
+    hero.addEventListener("error", () => hero.remove());
+    root.append(hero);
+  }
   const body = h("div", { class: "wh-body" });
 
   const logo = h("div", { class: "wh-logo", title: "Edit workspace icon", style: `background:${w.color};color:${textColorOn(w.color)}` },
@@ -3334,7 +3368,29 @@ function memberProfilePopover(anchor, p) {
     el.append(h("hr", { class: "dd-sep" }));
     el.append(h("div", { class: "mp-field" }, ico("mail", 14), h("a", { class: "mp-mail", href: "mailto:" + p.email }, p.email)));
     el.append(h("div", { class: "mp-field" }, ico("badge", 14), h("span", {}, "Workspace role: "), h("span", { class: "ws-role-chip" }, p.role || "Member")));
+    el.append(h("hr", { class: "dd-sep" }));
+    el.append(ddItem("smile", "Change anime character", () => characterPicker(anchor, p)));
   }, { minWidth: 250 });
+}
+
+// assign a Frieren character image as a member's avatar
+function characterPicker(anchor, person, after) {
+  openDropdown(anchor, (el, close) => {
+    el.append(h("div", { class: "dd-title" }, "Choose anime character"));
+    for (const c of ANIME_CHARS) {
+      const thumb = h("span", { class: "char-thumb" });
+      const img = h("img", { src: c.img, alt: c.name });
+      img.addEventListener("error", () => { thumb.replaceChildren(ico("person", 14)); thumb.classList.add("empty"); });
+      thumb.append(img);
+      const it = h("div", { class: "dd-item", onclick: () => {
+        person.avatar = c.img; person.character = c.id; save(); close(); render();
+        toast(`${person.name} → ${c.name}`); if (after) after();
+      } }, thumb, h("span", { style: "flex:1" }, c.name), person.avatar === c.img ? ico("check", 14) : null);
+      el.append(it);
+    }
+    el.append(h("hr", { class: "dd-sep" }));
+    el.append(ddItem("trash", "Clear (use initials)", () => { person.avatar = null; person.character = null; save(); close(); render(); if (after) after(); }));
+  }, { minWidth: 230 });
 }
 
 /* ---- Feature 4: collaborators ---- */
@@ -4471,7 +4527,12 @@ function profileMenu(anchor) {
     if (p.avatar) el.append(ddItem("trash", "Remove photo", () => { me().avatar = null; save(); render(); toast("Photo removed"); }));
 
     el.append(h("hr", { class: "dd-sep" }));
+    el.append(ddItem("smile", "Choose anime character", () => { close(); characterPicker(anchor, me()); }));
     el.append(ddItem("personPlus", "Manage members", () => { close(); peopleManager(anchor); }));
+    el.append(ddItem("vibe", (state.skin === "frieren" ? "Anime theme: On" : "Anime theme: Off"), () => {
+      state.skin = state.skin === "frieren" ? "default" : "frieren"; save(); close(); render();
+      toast(state.skin === "frieren" ? "Anime theme on" : "Anime theme off");
+    }));
     el.append(ddItem(state.theme === "light" ? "moon" : "sun", state.theme === "light" ? "Dark mode" : "Light mode", () => {
       state.theme = state.theme === "light" ? "dark" : "light"; save(); close(); render();
     }));
