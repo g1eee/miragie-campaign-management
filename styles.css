@@ -417,7 +417,6 @@ input, textarea, select {
 .group-menu-btn:hover { background: var(--surface-2); color: var(--text); }
 
 .g-table {
-  border-left: 6px solid var(--gcolor, #579bfc);
   border-radius: 8px;
   overflow: hidden;
   background: var(--bg);
@@ -457,7 +456,7 @@ input, textarea, select {
   min-width: 0;
   position: relative;
 }
-.cell.check-col { border-left: none; justify-content: center; }
+.cell.check-col { border-left: none; justify-content: center; box-shadow: inset 6px 0 0 var(--gcolor, #579bfc); }
 
 /* Freeze pane: checkbox + Item (name) columns are kept in place via JS transform
    (sticky-on-grid is unreliable across browsers). They need to paint above the
