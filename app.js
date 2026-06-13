@@ -1389,14 +1389,6 @@ function renderSidebar() {
   sb.append(list);
   renderBoardList(list);
 
-  // anime skin: a soft cherry-blossom card at the bottom of the sidebar
-  if ((state.skin || "default") === "frieren") {
-    const deco = h("div", { class: "side-deco" });
-    const img = h("img", { src: DECO_IMG.sidebar, alt: "", loading: "lazy" });
-    img.addEventListener("error", () => deco.remove());
-    deco.append(img, h("div", { class: "side-deco-bubble" }, "Let's get things done ✨"));
-    sb.append(deco);
-  }
 }
 
 function renderBoardList(list) {
