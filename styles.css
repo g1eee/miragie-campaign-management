@@ -2139,3 +2139,56 @@ html.gated, html.gated body { overflow: hidden; }
 .auth-tab:hover:not(.active) { color: var(--text); }
 
 .nested-menu { z-index: 10000; min-width: 130px; }
+
+/* ============ Anime skin: decorations (chibi + sakura) ============ */
+
+/* sidebar chibi */
+.side-deco { margin-top: auto; padding: 10px 6px 4px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.side-deco img {
+  width: 92px; height: 92px; object-fit: cover; border-radius: 18px;
+  border: 3px solid var(--bg); box-shadow: 0 8px 18px rgba(110, 80, 160, 0.25);
+}
+.side-deco-bubble {
+  font-size: 11px; font-weight: 600; color: #7a62ac; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 12px; padding: 5px 10px; text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+[data-theme="dark"] .side-deco-bubble { color: #c9b6ef; }
+#sidebar.collapsed .side-deco { display: none; }
+
+/* falling sakura petals */
+.sakura { position: absolute; left: 0; right: 0; top: 0; height: 240px; overflow: hidden; pointer-events: none; z-index: 1; --fall: 250px; }
+.sakura .petal {
+  position: absolute; top: -16px; width: 12px; height: 12px;
+  background: radial-gradient(circle at 30% 30%, #ffd9ec, #f3a9d2);
+  border-radius: 12px 2px 12px 2px; opacity: 0; transform: rotate(0);
+  animation: petal-fall linear infinite;
+}
+@keyframes petal-fall {
+  0%   { opacity: 0;   transform: translate(0, -16px) rotate(0deg); }
+  12%  { opacity: 0.85; }
+  100% { opacity: 0.15; transform: translate(46px, var(--fall)) rotate(420deg); }
+}
+.sakura .petal:nth-child(1)  { left: 4%;  animation-duration: 7.5s; animation-delay: 0s; }
+.sakura .petal:nth-child(2)  { left: 12%; animation-duration: 9s;   animation-delay: 1.4s; width: 9px; height: 9px; }
+.sakura .petal:nth-child(3)  { left: 20%; animation-duration: 6.5s; animation-delay: 0.7s; }
+.sakura .petal:nth-child(4)  { left: 29%; animation-duration: 10s;  animation-delay: 2.1s; width: 14px; height: 14px; }
+.sakura .petal:nth-child(5)  { left: 37%; animation-duration: 8s;   animation-delay: 0.3s; }
+.sakura .petal:nth-child(6)  { left: 46%; animation-duration: 9.5s; animation-delay: 1.8s; width: 10px; height: 10px; }
+.sakura .petal:nth-child(7)  { left: 55%; animation-duration: 7s;   animation-delay: 1s; }
+.sakura .petal:nth-child(8)  { left: 63%; animation-duration: 11s;  animation-delay: 2.6s; width: 13px; height: 13px; }
+.sakura .petal:nth-child(9)  { left: 72%; animation-duration: 8.5s; animation-delay: 0.5s; }
+.sakura .petal:nth-child(10) { left: 80%; animation-duration: 6.8s; animation-delay: 1.6s; width: 9px; height: 9px; }
+.sakura .petal:nth-child(11) { left: 88%; animation-duration: 10.5s;animation-delay: 0.9s; }
+.sakura .petal:nth-child(12) { left: 95%; animation-duration: 7.8s; animation-delay: 2.3s; width: 11px; height: 11px; }
+@media (prefers-reduced-motion: reduce) { .sakura { display: none; } }
+
+/* login screen: full-height petals + peeking character */
+.sakura-gate { position: fixed; inset: 0; height: 100%; --fall: 100vh; z-index: 0; }
+.auth-char {
+  position: fixed; right: 4%; bottom: 0; width: 240px; height: 240px; object-fit: cover;
+  border-radius: 28px 28px 0 0; box-shadow: 0 -8px 40px rgba(90, 60, 140, 0.3);
+  z-index: 1; pointer-events: none;
+}
+#auth-gate .auth-card { position: relative; z-index: 2; }
+@media (max-width: 760px) { .auth-char { display: none; } }

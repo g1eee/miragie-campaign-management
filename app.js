@@ -1201,6 +1201,14 @@ function renderAuthGate() {
   if (!gate) { gate = h("div", { id: "auth-gate" }); document.body.appendChild(gate); }
   gate.replaceChildren();
 
+  // decorative character + falling petals on the login screen
+  const gsak = h("div", { class: "sakura sakura-gate" });
+  for (let i = 0; i < 12; i++) gsak.append(h("span", { class: "petal" }));
+  gate.append(gsak);
+  const gchar = h("img", { class: "auth-char", src: WH_HERO, alt: "" });
+  gchar.addEventListener("error", () => gchar.remove());
+  gate.append(gchar);
+
   const card = h("div", { class: "auth-card" });
   const brand = h("div", { class: "auth-brand" },
     h("svg", { width: "26", height: "26", viewBox: "0 0 24 24" }), // dots logo drawn below
@@ -1372,6 +1380,16 @@ function renderSidebar() {
   const list = h("div", { id: "board-list" });
   sb.append(list);
   renderBoardList(list);
+
+  // anime skin: a little chibi sitting at the bottom of the sidebar
+  if ((state.skin || "default") === "frieren") {
+    const deco = h("div", { class: "side-deco" });
+    const pick = ANIME_CHARS[(new Date().getDate()) % ANIME_CHARS.length]; // rotates daily
+    const img = h("img", { src: pick.img, alt: "" });
+    img.addEventListener("error", () => deco.remove());
+    deco.append(img, h("div", { class: "side-deco-bubble" }, "Let's get things done ✨"));
+    sb.append(deco);
+  }
 }
 
 function renderBoardList(list) {
@@ -3468,6 +3486,10 @@ function workspaceHomeEl() {
     const hero = h("img", { class: "wh-hero", src: me().avatar || WH_HERO, alt: "" });
     hero.addEventListener("error", () => { hero.remove(); const hd = root.querySelector(".wh-head"); if (hd) hd.classList.remove("has-hero"); });
     root.append(hero);
+    // falling sakura petals over the banner
+    const sakura = h("div", { class: "sakura" });
+    for (let i = 0; i < 12; i++) sakura.append(h("span", { class: "petal" }));
+    root.append(sakura);
   }
   const body = h("div", { class: "wh-body" });
 
