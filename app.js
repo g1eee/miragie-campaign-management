@@ -897,8 +897,10 @@ const ANIME_CHARS = [
   { id: "fern",    name: "Fern",    img: "assets/characters/fern.png" },
   { id: "stark",   name: "Stark",   img: "assets/characters/stark.png" },
   { id: "himmel",  name: "Himmel",  img: "assets/characters/himmel.png" },
+  { id: "heiter",  name: "Heiter",  img: "assets/characters/heiter.png" },
 ];
-const WH_HERO = "assets/characters/hero.png";
+// hero portrait on workspace home — falls back to first available char art
+const WH_HERO = "assets/characters/frieren.png";
 
 // pick readable glyph color (dark on pastel/light, white on saturated)
 function textColorOn(hex) {
