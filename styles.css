@@ -2132,3 +2132,8 @@ html.gated, html.gated body { overflow: hidden; }
 }
 .auth-alt:hover { background: var(--surface-2); }
 .auth-loading { padding: 24px 0; text-align: center; color: var(--text-2); font-size: 14px; }
+
+.auth-tabs { display: flex; gap: 4px; background: var(--surface-2); border-radius: 10px; padding: 4px; margin-top: 4px; }
+.auth-tab { flex: 1; padding: 8px 6px; border-radius: 7px; font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.auth-tab.active { background: var(--bg); color: var(--text); box-shadow: var(--shadow-sm); }
+.auth-tab:hover:not(.active) { color: var(--text); }

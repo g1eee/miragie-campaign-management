@@ -1192,33 +1192,53 @@ function renderAuthGate() {
     return;
   }
 
-  card.append(h("h2", { class: "auth-title" }, "Sign in to your team"));
-  card.append(h("p", { class: "auth-sub" }, "This workspace requires sign in. Admin invites members by email — sign up with the email you were invited with."));
+  // two modes: returning user signs in; newly-invited user creates a password first
+  ui.authMode = ui.authMode || "signin";
+  const mode = ui.authMode;
+
+  const tabs = h("div", { class: "auth-tabs" });
+  const tabSignin = h("button", { class: "auth-tab" + (mode === "signin" ? " active" : "") }, "Sign in");
+  const tabSignup = h("button", { class: "auth-tab" + (mode === "signup" ? " active" : "") }, "First time? Set password");
+  tabSignin.addEventListener("click", () => { ui.authMode = "signin"; renderAuthGate(); });
+  tabSignup.addEventListener("click", () => { ui.authMode = "signup"; renderAuthGate(); });
+  tabs.append(tabSignin, tabSignup);
+  card.append(tabs);
+
+  card.append(h("p", { class: "auth-sub" }, mode === "signup"
+    ? "Were you invited? Enter the email you were invited with and choose a password — this creates your account."
+    : "Sign in with your team email and password."));
 
   const email = h("input", { type: "email", class: "auth-input", placeholder: "you@email.com", autocomplete: "email" });
-  const pw = h("input", { type: "password", class: "auth-input", placeholder: "Password (min 6 chars)", autocomplete: "current-password" });
+  const pw = h("input", { type: "password", class: "auth-input", placeholder: mode === "signup" ? "Choose a password (min 6 chars)" : "Password", autocomplete: mode === "signup" ? "new-password" : "current-password" });
   const msg = h("div", { class: "auth-msg" });
-  const signIn = h("button", { class: "btn-primary auth-btn" }, "Sign in");
-  const signUp = h("button", { class: "auth-alt" }, "Create account");
+  const primary = h("button", { class: "btn-primary auth-btn" }, mode === "signup" ? "Create account" : "Sign in");
 
-  const run = async (fn) => {
+  const friendlyErr = (raw) => {
+    const s = (raw || "").toLowerCase();
+    if (s.includes("invalid login")) return "Wrong email or password. Newly invited? Switch to “First time? Set password”.";
+    if (s.includes("already registered")) return "This email already has an account — switch to “Sign in”.";
+    if (s.includes("password")) return "Password must be at least 6 characters.";
+    return raw;
+  };
+
+  const run = async () => {
     const e = email.value.trim(), p = pw.value;
     if (!e || p.length < 6) { msg.textContent = "Enter an email and a password of at least 6 characters."; return; }
     msg.textContent = "Working…";
-    signIn.disabled = signUp.disabled = true;
+    primary.disabled = true;
+    const fn = mode === "signup" ? window.CLOUD.signUp : window.CLOUD.signIn;
     const r = await fn(e, p);
-    signIn.disabled = signUp.disabled = false;
-    if (r.error) { msg.textContent = r.error; return; }
+    primary.disabled = false;
+    if (r.error) { msg.textContent = friendlyErr(r.error); return; }
     if (r.needsConfirm) { msg.textContent = "Account created — confirm via the email we sent, then sign in."; return; }
     msg.textContent = "Signed in — loading…";
-    // onAuthStateChange will load the team workspace and drop this gate
+    // onAuthStateChange loads the team workspace and drops this gate
   };
-  signIn.addEventListener("click", () => run((e, p) => window.CLOUD.signIn(e, p)));
-  signUp.addEventListener("click", () => run((e, p) => window.CLOUD.signUp(e, p)));
-  pw.addEventListener("keydown", (ev) => { if (ev.key === "Enter") signIn.click(); });
+  primary.addEventListener("click", run);
+  pw.addEventListener("keydown", (ev) => { if (ev.key === "Enter") run(); });
   email.addEventListener("keydown", (ev) => { if (ev.key === "Enter") pw.focus(); });
 
-  card.append(email, pw, msg, signIn, h("div", { class: "auth-or" }, "or"), signUp);
+  card.append(email, pw, msg, primary);
   gate.append(card);
   setTimeout(() => email.focus(), 0);
 }
