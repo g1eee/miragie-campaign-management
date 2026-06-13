@@ -467,6 +467,10 @@ input, textarea, select {
 .board-canvas .cell.name-col { box-shadow: 6px 0 8px -6px rgba(0, 0, 0, .14); }
 .board-canvas .head-row .cell.check-col,
 .board-canvas .head-row .cell.name-col { z-index: 4; }
+/* group title bar stays pinned too (translated by the same JS) */
+.board-canvas .group-header { position: relative; z-index: 3; background: var(--bg); width: max-content; will-change: transform; }
+/* add-task row spans only 2 cols — no freeze edge shadow needed there */
+.board-canvas .add-task-row .cell.name-col { box-shadow: none; }
 .cell.center { justify-content: center; }
 .cell.add-col { color: var(--text-2); justify-content: center; cursor: pointer; }
 .cell.add-col:hover { background: var(--surface-2); }

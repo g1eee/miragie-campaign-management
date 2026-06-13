@@ -1959,7 +1959,7 @@ function tableViewEl(board) {
   let frozen = null, ticking = false;
   const syncFreeze = () => {
     ticking = false;
-    if (!frozen) frozen = canvas.querySelectorAll(".cell.check-col, .cell.name-col");
+    if (!frozen) frozen = canvas.querySelectorAll(".cell.check-col, .cell.name-col, .group-header");
     const x = canvas.scrollLeft;
     for (const el of frozen) el.style.transform = x ? `translateX(${x}px)` : "";
   };
@@ -2044,14 +2044,14 @@ function groupEl(board, group) {
       render();
     }
   });
-  addRow.append(h("div", { class: "cell", style: "border-left:1px solid var(--border)" }, addInput));
+  addRow.append(h("div", { class: "cell name-col", style: "border-left:1px solid var(--border)" }, addInput));
   attachRowDropZone(addRow, group, () => group.tasks.length);
   table.append(addRow);
 
   // ---- summary row
   if (group.tasks.length) {
     const sum = h("div", { class: "g-row summary-row", style: `grid-template-columns:${tpl}` });
-    sum.append(h("div", { class: "cell check-col", style: "border-left:none" }), h("div", { class: "cell" }));
+    sum.append(h("div", { class: "cell check-col", style: "border-left:none" }), h("div", { class: "cell name-col" }));
     for (const c of cols) {
       const cell = h("div", { class: "cell" });
       if (c.id === "status") cell.append(batteryEl(tasks, "status"));
