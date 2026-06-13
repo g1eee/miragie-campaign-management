@@ -617,6 +617,30 @@ function refreshDd() {
   openDd.build(openDd.el, closeDropdowns);
 }
 
+// A small submenu that opens WITHOUT closing the parent dropdown.
+// Lives inside the parent's element (so the outside-click handler keeps the parent open),
+// positioned with fixed coords near the anchor. options: [{label, value, check}]
+function nestedMenu(anchor, options, onPick) {
+  if (!openDd) return;
+  const existing = openDd.el.querySelector(".nested-menu");
+  if (existing) existing.remove();
+  const r = anchor.getBoundingClientRect();
+  const m = h("div", { class: "dropdown nested-menu" });
+  m.style.position = "fixed";
+  for (const o of options) {
+    m.append(h("div", { class: "dd-item", onclick: (e) => { e.stopPropagation(); m.remove(); onPick(o); } },
+      h("span", { style: "flex:1" }, o.label), o.check ? ico("check", 14) : null));
+  }
+  openDd.el.appendChild(m);
+  let x = Math.max(8, Math.min(r.left, window.innerWidth - m.offsetWidth - 8));
+  let y = r.bottom + 4;
+  if (y + m.offsetHeight > window.innerHeight - 8) y = Math.max(8, r.top - m.offsetHeight - 4);
+  m.style.left = x + "px";
+  m.style.top = y + "px";
+  const closer = (e) => { if (!m.contains(e.target)) { m.remove(); document.removeEventListener("mousedown", closer, true); } };
+  setTimeout(() => document.addEventListener("mousedown", closer, true), 0);
+}
+
 document.addEventListener("mousedown", (e) => {
   if (openDd && !openDd.el.contains(e.target) && !(openDd.anchor.isConnected && openDd.anchor.contains(e.target))) {
     closeDropdowns();
@@ -1621,9 +1645,10 @@ function peopleManager(anchor) {
         const roleBtn = h("button", { class: "ws-role-chip pm-role-btn" }, p.role || "Member", ico("chevDown", 11));
         roleBtn.addEventListener("click", (e) => {
           e.stopPropagation();
-          openDropdown(roleBtn, (dd, c) => {
-            for (const r of MEMBER_ROLES) dd.append(h("div", { class: "dd-item", onclick: () => { p.role = r; save(); c(); peopleManager(anchor); } }, h("span", { style: "flex:1" }, r), p.role === r ? ico("check", 14) : null));
-          }, { minWidth: 140 });
+          nestedMenu(roleBtn, MEMBER_ROLES.map(r => ({ label: r, value: r, check: p.role === r })), (o) => {
+            p.role = o.value; save();
+            roleBtn.replaceChildren(o.value, ico("chevDown", 11)); // update chip in place; panel stays open
+          });
         });
         row.append(roleBtn);
       } else {
@@ -1663,9 +1688,9 @@ function peopleManager(anchor) {
     if (admin) {
       roleSel.addEventListener("click", (e) => {
         e.stopPropagation();
-        openDropdown(roleSel, (dd, c) => {
-          for (const r of MEMBER_ROLES) dd.append(h("div", { class: "dd-item", onclick: () => { inviteRole = r; roleSel.replaceChildren(r, ico("chevDown", 12)); c(); } }, r));
-        }, { minWidth: 130 });
+        nestedMenu(roleSel, MEMBER_ROLES.map(r => ({ label: r, value: r, check: inviteRole === r })), (o) => {
+          inviteRole = o.value; roleSel.replaceChildren(o.value, ico("chevDown", 12));
+        });
       });
     } else {
       roleSel.classList.add("disabled");
