@@ -592,12 +592,15 @@ function closeDropdowns() {
 }
 
 function openDropdown(anchor, build, opts = {}) {
+  // capture the anchor position BEFORE closing the current dropdown — otherwise an
+  // anchor that lived inside that dropdown gets detached and reports a 0,0 rect
+  // (popover would jump to the top-left corner).
+  const r = anchor.getBoundingClientRect();
   closeDropdowns();
   const el = h("div", { class: "dropdown" });
   const close = () => closeDropdowns();
   build(el, close);
   document.body.appendChild(el);
-  const r = anchor.getBoundingClientRect();
   if (opts.minWidth) el.style.minWidth = opts.minWidth + "px";
   let x = opts.alignRight ? r.right - el.offsetWidth : r.left;
   x = Math.max(8, Math.min(x, window.innerWidth - el.offsetWidth - 8));
@@ -1177,7 +1180,7 @@ function renderAuthGate() {
   const card = h("div", { class: "auth-card" });
   const brand = h("div", { class: "auth-brand" },
     h("svg", { width: "26", height: "26", viewBox: "0 0 24 24" }), // dots logo drawn below
-    h("div", { class: "auth-brand-text" }, h("b", {}, "campaign"), h("span", {}, "tracker")));
+    h("div", { class: "auth-brand-text" }, h("b", {}, "mira"), h("span", {}, "gie")));
   brand.firstChild.innerHTML = '<circle cx="5" cy="12" r="4" fill="#ff3d57"/><circle cx="12" cy="12" r="4" fill="#ffcb00"/><circle cx="19" cy="12" r="4" fill="#00c875"/>';
   card.append(brand);
 
@@ -4712,15 +4715,9 @@ function profileMenu(anchor) {
     el.classList.add("profile-pop");
     const p = me();
 
-    const fileIn = h("input", { type: "file", accept: "image/*", style: "display:none" });
-    fileIn.addEventListener("change", () => {
-      const f = fileIn.files[0];
-      if (!f) return;
-      scaleImage(f, (url) => { me().avatar = url; save(); render(); toast("Profile photo updated"); });
-    });
-    const avaWrap = h("div", { class: "profile-ava-wrap", title: "Change photo", onclick: () => fileIn.click() },
-      avatarEl(p, 72), h("span", { class: "profile-ava-edit" }, ico("camera", 14)));
-    el.append(h("div", { class: "profile-top" }, avaWrap, fileIn,
+    const avaWrap = h("div", { class: "profile-ava-wrap", title: "Choose character", onclick: () => { close(); characterPicker(anchor, me()); } },
+      avatarEl(p, 72), h("span", { class: "profile-ava-edit" }, ico("smile", 14)));
+    el.append(h("div", { class: "profile-top" }, avaWrap,
       h("div", { class: "profile-name-big" }, p.name),
       h("div", { class: "profile-mail" }, (p.role || "Member") + (teamOn() ? " · " + window.CLOUD.email() : (isAdmin() ? " · admin" : "")))));
 
@@ -4730,8 +4727,6 @@ function profileMenu(anchor) {
     okBtn.addEventListener("click", doSave);
     input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") doSave(); ev.stopPropagation(); });
     el.append(h("div", { class: "dd-input-row" }, input, okBtn));
-
-    if (p.avatar) el.append(ddItem("trash", "Remove photo", () => { me().avatar = null; save(); render(); toast("Photo removed"); }));
 
     el.append(h("hr", { class: "dd-sep" }));
     el.append(ddItem("smile", "Choose anime character", () => { close(); characterPicker(anchor, me()); }));
