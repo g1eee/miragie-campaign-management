@@ -985,10 +985,9 @@ const ANIME_CHARS = [
 // hero portrait on workspace home — falls back to first available char art
 const WH_HERO = "assets/characters/frieren.png";
 
-// Decorative imagery (Unsplash) — cherry blossom / aesthetic, NOT the avatar assets
+// Decorative imagery (Unsplash) — Ghibli-style green landscapes, NOT the avatar assets
 const DECO_IMG = {
-  sidebar: "https://images.unsplash.com/photo-1551829142-d9b8cf2c9232?w=520&q=80&auto=format&fit=crop",
-  login:   "https://images.unsplash.com/photo-1522383225653-ed111181a951?w=1600&q=80&auto=format&fit=crop",
+  login: "https://images.unsplash.com/photo-1713669374349-3a240c47f727?w=1400&q=80&auto=format&fit=crop",
 };
 
 // pick readable glyph color (dark on pastel/light, white on saturated)
