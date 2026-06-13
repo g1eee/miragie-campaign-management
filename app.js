@@ -2130,6 +2130,43 @@ function setColVal(task, col, v) {
 
 function softRenderTable(board) { if (!ui.home && getBoard() === board && board.view === "table") rerenderViewOnly(board); }
 
+/* ---- Numbers column: validation + conditional rules ---- */
+const COND_OPS = [
+  { id: "equals", label: "equals" },
+  { id: "ne",     label: "is not" },
+  { id: "gt",     label: "greater than" },
+  { id: "lt",     label: "less than" },
+  { id: "gte",    label: "greater or equal" },
+  { id: "lte",    label: "less or equal" },
+];
+function condMatch(op, a, b) {
+  switch (op) { case "equals": return a === b; case "ne": return a !== b; case "gt": return a > b; case "lt": return a < b; case "gte": return a >= b; case "lte": return a <= b; }
+  return false;
+}
+// returns {ok, msg} — checks a number against this column's Validation rule
+function validateNumber(col, n) {
+  const V = col.validation;
+  if (!V || V.type !== "validation") return { ok: true };
+  if (V.integer && !Number.isInteger(n)) return { ok: false, msg: "Whole numbers only" };
+  if (V.min != null && V.min !== "" && n < Number(V.min)) return { ok: false, msg: `Minimum is ${V.min}` };
+  if (V.max != null && V.max !== "" && n > Number(V.max)) return { ok: false, msg: `Maximum is ${V.max}` };
+  return { ok: true };
+}
+// when this number changes, apply any Conditional rules that set other columns
+function applyColConditionals(board, task, col, n) {
+  const V = col.validation;
+  if (!V || V.type !== "conditional" || !Array.isArray(V.rules)) return;
+  for (const r of V.rules) {
+    if (r.value === "" || r.value == null) continue;
+    if (!condMatch(r.op, n, Number(r.value))) continue;
+    for (const th of (r.then || [])) {
+      const tc = board.columns.find(c => c.id === th.colId);
+      if (!tc || th.value == null || th.value === "") continue;
+      setColVal(task, tc, tc.type === "numbers" ? Number(th.value) : th.value);
+    }
+  }
+}
+
 function colHeaderEl(board, col) {
   const cell = h("div", { class: "cell col-head-cell", style: "justify-content:space-between;gap:4px;cursor:default" });
   cell.append(h("span", { class: "col-name", title: col.name, style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, col.name));
@@ -2183,9 +2220,144 @@ function colMenu(anchor, board, col) {
   openDropdown(anchor, (el, close) => {
     el.append(ddItem("pencil", "Rename", () => { close(); modalPrompt("Rename column", "Column name", col.name, (v) => { col.name = v; save(); render(); }); }));
     if (col.type === "status" || col.type === "dropdown") el.append(ddItem("kanban", "Edit Labels", () => { close(); labelEditor(anchor, board, col); }));
+    if (col.type === "numbers") {
+      const has = col.validation && col.validation.type;
+      const it = ddItem("gear", "Validation rules", () => { close(); columnRulesModal(board, col); });
+      if (has) it.append(h("span", { class: "dd-badge" }, "On"));
+      el.append(it);
+    }
     el.append(ddItem("plus", "Add column to the right", () => { close(); addColumnMenu(anchor, board, board.columns.indexOf(col) + 1); }));
     el.append(h("hr", { class: "dd-sep" }), ddItem("trash", "Delete column", () => { close(); deleteColumn(board, col); }, "danger"));
   }, { minWidth: 210 });
+}
+
+function columnRulesModal(board, col) {
+  openModal((card, close) => {
+    card.classList.add("cvr-modal");
+    const data = col.validation && col.validation.type
+      ? JSON.parse(JSON.stringify(col.validation))
+      : { type: null, min: "", max: "", integer: false, rules: [] };
+    if (!Array.isArray(data.rules)) data.rules = [];
+
+    const closeBtn = h("button", { class: "icon-btn", onclick: close }); closeBtn.append(ico("x", 16));
+    card.append(h("div", { class: "modal-head" },
+      h("div", { style: "display:flex;align-items:center;gap:8px;flex:1" }, ico("gear", 18), h("b", {}, "Column validation rules")), closeBtn));
+
+    const body = h("div", { class: "modal-body" });
+    body.append(h("div", { class: "muted", style: "margin-bottom:10px" }, "Set type and configuration:"));
+
+    // target columns selectable in "Then"
+    const targets = board.columns.filter(c => c.id !== col.id && ["status", "dropdown", "numbers", "text", "date"].includes(c.type));
+
+    const sel = (opts, cur, onChange) => {
+      const s = h("select", { class: "cvr-sel" });
+      for (const o of opts) s.append(h("option", { value: o.id }, o.label));
+      s.value = cur != null ? String(cur) : "";
+      s.addEventListener("change", () => onChange(s.value));
+      return s;
+    };
+
+    /* ---- Conditional card ---- */
+    const condCard = h("div", { class: "cvr-card" });
+    const condRows = h("div", {});
+    const drawCond = () => {
+      condRows.replaceChildren();
+      if (!data.rules.length) data.rules.push({ op: "equals", value: "", then: [{ colId: (targets[0] || {}).id || "", value: "" }] });
+      data.rules.forEach((r, ri) => {
+        const block = h("div", { class: "cvr-rule" });
+        const del = h("button", { class: "row-act", title: "Remove rule", onclick: () => { data.rules.splice(ri, 1); drawCond(); } }); del.append(ico("trash", 14));
+        block.append(h("div", { class: "cvr-if" },
+          h("span", {}, "If"), h("span", { class: "cvr-chip" }, ico("numbers", 13), h("span", {}, col.name)),
+          sel(COND_OPS.map(o => ({ id: o.id, label: o.label })), r.op, v => r.op = v),
+          h("input", { class: "cvr-in", type: "number", placeholder: "Value", value: r.value, oninput: (e) => r.value = e.target.value }),
+          del));
+
+        (r.then || []).forEach((th, ti) => {
+          const valHost = h("span", {});
+          const drawVal = () => {
+            valHost.replaceChildren();
+            const tc = board.columns.find(c => c.id === th.colId);
+            if (tc && (tc.type === "status" || tc.type === "dropdown")) {
+              valHost.append(sel([{ id: "", label: "—" }].concat((tc.labels || []).map(l => ({ id: l.id, label: l.label || "—" }))), th.value, v => th.value = v));
+            } else if (tc && tc.type === "date") {
+              valHost.append(h("input", { class: "cvr-in", type: "date", value: th.value || "", onchange: (e) => th.value = e.target.value }));
+            } else {
+              valHost.append(h("input", { class: "cvr-in", type: tc && tc.type === "numbers" ? "number" : "text", placeholder: "Value", value: th.value || "", oninput: (e) => th.value = e.target.value }));
+            }
+          };
+          const thenRow = h("div", { class: "cvr-then" },
+            h("span", {}, "Then"),
+            sel([{ id: "", label: "Column" }].concat(targets.map(t => ({ id: t.id, label: t.name }))), th.colId, v => { th.colId = v; th.value = ""; drawVal(); }),
+            h("span", { class: "muted", style: "font-size:12px" }, "set to"),
+            valHost);
+          if ((r.then || []).length > 1) { const rm = h("button", { class: "row-act", onclick: () => { r.then.splice(ti, 1); drawCond(); } }); rm.append(ico("x", 13)); thenRow.append(rm); }
+          drawVal();
+          block.append(thenRow);
+        });
+
+        block.append(h("button", { class: "cvr-add", onclick: () => { r.then.push({ colId: (targets[0] || {}).id || "", value: "" }); drawCond(); } }, "+ New column"));
+        condRows.append(block);
+      });
+      condRows.append(h("button", { class: "cvr-add", style: "margin-top:6px", onclick: () => { data.rules.push({ op: "equals", value: "", then: [{ colId: (targets[0] || {}).id || "", value: "" }] }); drawCond(); } }, "+ New rule"));
+    };
+
+    /* ---- Validation card ---- */
+    const valCard = h("div", { class: "cvr-card" });
+    const drawVal = () => {
+      valCard.replaceChildren();
+      valCard.append(h("div", { class: "cvr-row" },
+        h("label", {}, "Min"), h("input", { class: "cvr-in", type: "number", placeholder: "—", value: data.min, oninput: (e) => data.min = e.target.value }),
+        h("label", {}, "Max"), h("input", { class: "cvr-in", type: "number", placeholder: "—", value: data.max, oninput: (e) => data.max = e.target.value })));
+      const chk = h("input", { type: "checkbox" }); chk.checked = !!data.integer;
+      chk.addEventListener("change", () => data.integer = chk.checked);
+      valCard.append(h("label", { class: "cvr-check" }, chk, h("span", {}, "Whole numbers only")));
+      valCard.append(h("div", { class: "muted", style: "font-size:12px;margin-top:6px" }, "Values outside the range are rejected when entered."));
+    };
+
+    // radio options
+    const opt = (id, title, desc, payload) => {
+      const wrap = h("div", { class: "cvr-opt" + (data.type === id ? " sel" : "") });
+      const radio = h("span", { class: "cvr-radio" + (data.type === id ? " on" : "") });
+      wrap.append(h("div", { class: "cvr-opt-head", onclick: () => { data.type = id; refresh(); } }, radio, h("div", {}, h("b", {}, title), h("div", { class: "muted", style: "font-size:12px" }, desc))));
+      wrap.append(payload);
+      return wrap;
+    };
+
+    const optCond = opt("conditional", "Conditional rule", "Define a condition to set values in other columns", condCard);
+    const optVal = opt("validation", "Validation rule", "Restrict the values of this column to a numeric range", valCard);
+    condCard.append(condRows);
+
+    const refresh = () => {
+      optCond.classList.toggle("sel", data.type === "conditional");
+      optVal.classList.toggle("sel", data.type === "validation");
+      optCond.querySelector(".cvr-radio").classList.toggle("on", data.type === "conditional");
+      optVal.querySelector(".cvr-radio").classList.toggle("on", data.type === "validation");
+      condCard.style.display = data.type === "conditional" ? "" : "none";
+      valCard.style.display = data.type === "validation" ? "" : "none";
+      if (data.type === "conditional") drawCond();
+      if (data.type === "validation") drawVal();
+    };
+    body.append(optCond, optVal);
+    card.append(body);
+
+    const saveBtn = h("button", { class: "btn-primary" }, "Save rules");
+    saveBtn.addEventListener("click", () => {
+      if (!data.type) { col.validation = null; }
+      else if (data.type === "conditional") {
+        data.rules = data.rules.filter(r => r.value !== "" && (r.then || []).some(t => t.colId && t.value !== ""));
+        data.rules.forEach(r => r.then = r.then.filter(t => t.colId && t.value !== ""));
+        col.validation = data.rules.length ? { type: "conditional", rules: data.rules } : null;
+      } else {
+        col.validation = { type: "validation", min: data.min, max: data.max, integer: !!data.integer };
+      }
+      save(); close(); render();
+      toast(col.validation ? "Validation rules saved" : "Rules cleared");
+    });
+    const clearBtn = h("button", { class: "modal-cancel", onclick: () => { col.validation = null; save(); close(); render(); toast("Rules cleared"); } }, "Clear");
+    card.append(h("div", { class: "modal-foot" }, clearBtn, h("button", { class: "modal-cancel", onclick: close }, "Cancel"), saveBtn));
+
+    refresh();
+  });
 }
 
 function addColumnMenu(anchor, board, index) {
@@ -2277,7 +2449,21 @@ function numberCellEl(task, col) {
     const input = h("input", { class: "inline-input", type: "number", value: v != null ? String(v) : "", style: "text-align:right" });
     cell.replaceChildren(input); input.focus(); input.select();
     let done = false;
-    const fin = (ok) => { if (done) return; done = true; if (ok) { const t = input.value.trim(); setColVal(task, col, t === "" ? "" : Number(t)); } softRenderTable(getBoard()); };
+    const fin = (ok) => {
+      if (done) return; done = true;
+      if (ok) {
+        const t = input.value.trim();
+        if (t === "") { setColVal(task, col, ""); }
+        else {
+          const n = Number(t);
+          const chk = validateNumber(col, n);
+          if (!chk.ok) { toast("⚠ " + col.name + ": " + chk.msg); softRenderTable(getBoard()); return; }
+          setColVal(task, col, n);
+          applyColConditionals(getBoard(), task, col, n);
+        }
+      }
+      softRenderTable(getBoard());
+    };
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") fin(true); if (e.key === "Escape") fin(false); e.stopPropagation(); });
     input.addEventListener("blur", () => fin(true));
   });

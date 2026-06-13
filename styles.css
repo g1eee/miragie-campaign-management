@@ -2199,3 +2199,26 @@ html.gated, html.gated body { overflow: hidden; }
 /* login screen: falling spores over soft gradient */
 .sakura-gate { position: fixed; inset: 0; height: 100%; --fall: 100vh; z-index: 1; }
 #auth-gate .auth-card { position: relative; z-index: 3; }
+
+/* ============ Column validation rules modal ============ */
+.cvr-modal { width: 560px; max-width: 94vw; }
+.cvr-opt { border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 12px; transition: border-color .12s, background .12s; }
+.cvr-opt.sel { border-color: var(--primary); background: var(--primary-soft); }
+.cvr-opt-head { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.cvr-opt-head b { font-size: 14px; }
+.cvr-radio { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border-2); flex: none; margin-top: 1px; position: relative; }
+.cvr-radio.on { border-color: var(--primary); }
+.cvr-radio.on::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--primary); }
+.cvr-card { margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 12px; }
+.cvr-rule { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-bottom: 10px; background: var(--bg); }
+.cvr-if, .cvr-then { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.cvr-then { margin-left: 14px; }
+.cvr-chip { display: inline-flex; align-items: center; gap: 5px; background: #fdab3d; color: #fff; border-radius: 6px; padding: 3px 8px; font-size: 12px; font-weight: 600; }
+.cvr-sel, .cvr-in { height: 34px; border: 1px solid var(--border); border-radius: 7px; padding: 0 10px; background: var(--bg); color: var(--text); outline: none; font-family: inherit; font-size: 13px; }
+.cvr-sel:focus, .cvr-in:focus { border-color: var(--primary); }
+.cvr-in { width: 130px; }
+.cvr-add { color: var(--primary); font-size: 13px; font-weight: 600; padding: 4px 2px; }
+.cvr-add:hover { text-decoration: underline; }
+.cvr-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cvr-row label { font-size: 13px; color: var(--text-2); }
+.cvr-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
