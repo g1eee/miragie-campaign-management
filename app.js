@@ -231,6 +231,8 @@ const ui = {
   homeTab: "content",    // recents | content | collaborators | permissions
   whSel: new Set(),      // selected asset (board) ids in content tab
   whArchived: false,     // content tab showing archived assets
+  authResolved: false,   // cloud session checked at least once (gate: loading vs form)
+  noAccess: false,       // signed in but not on the team allow-list
   wfSel: null,           // selected workflow node id ("trigger" | stepId)
   wfPanel: null,         // "history" | null
   wfTab: "history",      // history | analytics
@@ -253,6 +255,8 @@ function cloudOn() { return typeof window !== "undefined" && window.CLOUD && win
 function initCloud() {
   if (!cloudOn()) return;
   window.CLOUD.init(async (u) => {
+    ui.authResolved = true;
+    ui.noAccess = false;
     if (u) {
       const team = await window.CLOUD.loadTeam();
       if (team && Array.isArray(team.boards)) {
@@ -266,8 +270,8 @@ function initCloud() {
         await window.CLOUD.saveTeam(state);   // admin seeds the team baseline from local
         toast("☁ Team workspace created");
       } else {
-        // signed in but not on the team (RLS blocks read) — stay local, tell them
-        toast("Signed in. Ask the admin to invite " + (window.CLOUD.email() || "your email"));
+        // signed in but not invited (RLS blocks read) — keep them out
+        ui.noAccess = true;
       }
     }
     render();
@@ -1150,6 +1154,73 @@ function render() {
   renderBulk();
   renderTopbar();
   applyRefocus();
+  renderAuthGate();
+}
+
+/* ---------------- Login gate (must sign in to enter) ---------------- */
+
+function renderAuthGate() {
+  const signedIn = cloudOn() && !!window.CLOUD.user();
+  const locked = cloudOn() && (!window.CLOUD.user() || ui.noAccess);
+  let gate = document.getElementById("auth-gate");
+  if (!locked) { if (gate) gate.remove(); document.documentElement.classList.remove("gated"); return; }
+  document.documentElement.classList.add("gated");
+  if (!gate) { gate = h("div", { id: "auth-gate" }); document.body.appendChild(gate); }
+  gate.replaceChildren();
+
+  const card = h("div", { class: "auth-card" });
+  const brand = h("div", { class: "auth-brand" },
+    h("svg", { width: "26", height: "26", viewBox: "0 0 24 24" }), // dots logo drawn below
+    h("div", { class: "auth-brand-text" }, h("b", {}, "campaign"), h("span", {}, "tracker")));
+  brand.firstChild.innerHTML = '<circle cx="5" cy="12" r="4" fill="#ff3d57"/><circle cx="12" cy="12" r="4" fill="#ffcb00"/><circle cx="19" cy="12" r="4" fill="#00c875"/>';
+  card.append(brand);
+
+  if (!ui.authResolved) {
+    card.append(h("div", { class: "auth-loading" }, "Connecting…"));
+    gate.append(card);
+    return;
+  }
+
+  // signed in but not on the team allow-list
+  if (signedIn && ui.noAccess) {
+    card.append(h("h2", { class: "auth-title" }, "No access yet"));
+    card.append(h("p", { class: "auth-sub" }, "You're signed in as " + (window.CLOUD.email() || "your account") + ", but you haven't been invited to this team. Ask the admin (" + ADMIN_EMAIL + ") to invite this email."));
+    const out = h("button", { class: "auth-alt" }, "Sign out");
+    out.addEventListener("click", async () => { out.disabled = true; await window.CLOUD.signOut(); });
+    card.append(out);
+    gate.append(card);
+    return;
+  }
+
+  card.append(h("h2", { class: "auth-title" }, "Sign in to your team"));
+  card.append(h("p", { class: "auth-sub" }, "This workspace requires sign in. Admin invites members by email — sign up with the email you were invited with."));
+
+  const email = h("input", { type: "email", class: "auth-input", placeholder: "you@email.com", autocomplete: "email" });
+  const pw = h("input", { type: "password", class: "auth-input", placeholder: "Password (min 6 chars)", autocomplete: "current-password" });
+  const msg = h("div", { class: "auth-msg" });
+  const signIn = h("button", { class: "btn-primary auth-btn" }, "Sign in");
+  const signUp = h("button", { class: "auth-alt" }, "Create account");
+
+  const run = async (fn) => {
+    const e = email.value.trim(), p = pw.value;
+    if (!e || p.length < 6) { msg.textContent = "Enter an email and a password of at least 6 characters."; return; }
+    msg.textContent = "Working…";
+    signIn.disabled = signUp.disabled = true;
+    const r = await fn(e, p);
+    signIn.disabled = signUp.disabled = false;
+    if (r.error) { msg.textContent = r.error; return; }
+    if (r.needsConfirm) { msg.textContent = "Account created — confirm via the email we sent, then sign in."; return; }
+    msg.textContent = "Signed in — loading…";
+    // onAuthStateChange will load the team workspace and drop this gate
+  };
+  signIn.addEventListener("click", () => run((e, p) => window.CLOUD.signIn(e, p)));
+  signUp.addEventListener("click", () => run((e, p) => window.CLOUD.signUp(e, p)));
+  pw.addEventListener("keydown", (ev) => { if (ev.key === "Enter") signIn.click(); });
+  email.addEventListener("keydown", (ev) => { if (ev.key === "Enter") pw.focus(); });
+
+  card.append(email, pw, msg, signIn, h("div", { class: "auth-or" }, "or"), signUp);
+  gate.append(card);
+  setTimeout(() => email.focus(), 0);
 }
 
 function softRender() {

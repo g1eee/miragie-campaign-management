@@ -2098,3 +2098,37 @@ input, textarea, select {
 .pm-invite-role:hover { background: var(--surface-2); }
 .pm-invite-role.disabled { opacity: .6; cursor: not-allowed; }
 .pm-note { font-size: 11px; color: var(--text-2); padding: 8px 4px 2px; line-height: 1.4; }
+
+/* ============ Login gate ============ */
+html.gated, html.gated body { overflow: hidden; }
+#auth-gate {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: linear-gradient(135deg, #efe7fb 0%, #e7eeff 50%, #f6eef7 100%);
+}
+[data-theme="dark"] #auth-gate { background: linear-gradient(135deg, #1a1730 0%, #15233f 55%, #241a36 100%); }
+.auth-card {
+  width: 100%; max-width: 380px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: 0 20px 60px rgba(60, 40, 110, 0.25);
+  padding: 30px 28px; display: flex; flex-direction: column; gap: 12px;
+}
+.auth-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.auth-brand-text { font-size: 17px; color: var(--text); }
+.auth-brand-text b { font-weight: 800; }
+.auth-brand-text span { color: var(--text-2); }
+.auth-title { font-size: 20px; font-weight: 700; margin-top: 4px; }
+.auth-sub { font-size: 12.5px; color: var(--text-2); line-height: 1.5; margin-bottom: 6px; }
+.auth-input {
+  width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--border);
+  border-radius: 9px; background: var(--surface); outline: none; font-size: 14px;
+}
+.auth-input:focus { border-color: var(--primary); background: var(--bg); }
+.auth-msg { min-height: 16px; font-size: 12px; color: var(--danger); }
+.auth-btn { height: 42px; border-radius: 9px; font-weight: 600; font-size: 14px; }
+.auth-or { text-align: center; font-size: 11px; color: var(--text-2); margin: 2px 0; }
+.auth-alt {
+  height: 40px; border-radius: 9px; border: 1px solid var(--border); color: var(--text);
+  font-weight: 500; background: var(--bg);
+}
+.auth-alt:hover { background: var(--surface-2); }
+.auth-loading { padding: 24px 0; text-align: center; color: var(--text-2); font-size: 14px; }
