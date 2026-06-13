@@ -380,7 +380,8 @@ input, textarea, select {
 /* ============ Groups / Table ============ */
 
 .board-canvas { padding: 4px 32px 140px; flex: 1; }
-.board-canvas.h-scroll { overflow-x: auto; }
+/* single scroll container so sticky (frozen) columns pin correctly */
+.board-canvas.h-scroll { overflow: auto; min-height: 0; min-width: 0; }
 .group-wrap { min-width: 940px; }
 
 .group { margin-bottom: 32px; }
