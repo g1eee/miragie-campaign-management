@@ -2051,7 +2051,7 @@ function groupEl(board, group) {
   // ---- summary row
   if (group.tasks.length) {
     const sum = h("div", { class: "g-row summary-row", style: `grid-template-columns:${tpl}` });
-    sum.append(h("div", { class: "cell check-col", style: "border-left:none" }), h("div", { class: "cell name-col" }));
+    sum.append(h("div", { class: "cell check-col" }), h("div", { class: "cell name-col" }));
     for (const c of cols) {
       const cell = h("div", { class: "cell" });
       if (c.id === "status") cell.append(batteryEl(tasks, "status"));
