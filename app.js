@@ -123,6 +123,9 @@ const PATHS = {
   target: '<circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>',
   zoomIn: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/>',
   zoomOut: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/>',
+  paperclip: '<path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.6 1.6 0 0 1-2.3-2.3l7.8-7.8"/>',
+  at: '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
+  smile: '<circle cx="12" cy="12" r="9"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>',
 };
 
 function ico(name, size = 16) {
@@ -319,6 +322,7 @@ function migrate() {
     if (b.doc == null) b.doc = "";
     if (!Array.isArray(b.widgets)) b.widgets = [];
     if (!Array.isArray(b.columns)) b.columns = [];
+    if (!b.colNames) b.colNames = {};
     if (!b.chartConfig) b.chartConfig = { chartType: "donut", metric: "status" };
     if (!b.createdAt) b.createdAt = Date.now();
     if (!b.creator) b.creator = state.user || "u1";
@@ -1606,9 +1610,16 @@ function gridTemplate(board) {
   return `36px minmax(280px, 1fr) ${cols.map(c => c.w + "px").join(" ")} ${custom} 40px`.replace(/\s+/g, " ").trim();
 }
 
+// Total intrinsic width so the canvas scrolls horizontally instead of clipping columns.
+function gridMinWidth(board) {
+  const sys = COLUMNS.filter(c => !board.hidden.includes(c.id)).reduce((a, c) => a + c.w, 0);
+  const custom = board.columns.reduce((a, c) => a + (c.width || 150), 0);
+  return 36 + 280 + sys + custom + 40;
+}
+
 function tableViewEl(board) {
   const canvas = h("div", { class: "view-root board-canvas h-scroll" });
-  const wrap = h("div", { class: "group-wrap" });
+  const wrap = h("div", { class: "group-wrap", style: `min-width:${gridMinWidth(board)}px` });
   canvas.append(wrap);
 
   if (!board.groups.length) {
@@ -1676,8 +1687,8 @@ function groupEl(board, group) {
     softRender();
   });
   headRow.append(h("div", { class: "cell check-col" }, headCb));
-  headRow.append(h("div", { class: "cell name-col" }, "Task"));
-  for (const c of cols) headRow.append(h("div", { class: "cell" }, c.label));
+  headRow.append(nameColHeaderEl(board));
+  for (const c of cols) headRow.append(sysColHeaderEl(board, c));
   for (const col of board.columns) headRow.append(colHeaderEl(board, col));
   const addCol = h("div", { class: "cell add-col", title: "Add column" }, ico("plus", 14));
   addCol.addEventListener("click", () => addColumnMenu(addCol, board, board.columns.length));
@@ -1813,6 +1824,45 @@ function colHeaderEl(board, col) {
   menu.addEventListener("click", (e) => { e.stopPropagation(); colMenu(menu, board, col); });
   cell.append(menu);
   return cell;
+}
+
+const colLabel = (board, c) => (board.colNames && board.colNames[c.id]) || c.label;
+
+function nameColHeaderEl(board) {
+  const cell = h("div", { class: "cell name-col col-head-cell", style: "justify-content:space-between;gap:4px" });
+  cell.append(h("span", { class: "col-name" }, colLabel(board, { id: "name", label: "Task" })));
+  const menu = h("button", { class: "col-menu-btn", title: "Column options" });
+  menu.append(ico("dots", 13));
+  menu.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openDropdown(menu, (el, close) => el.append(ddItem("pencil", "Rename column", () => {
+      close();
+      modalPrompt("Rename column", "Column name", colLabel(board, { id: "name", label: "Task" }), (v) => { board.colNames.name = v; save(); render(); });
+    })), { minWidth: 180 });
+  });
+  cell.append(menu);
+  return cell;
+}
+
+function sysColHeaderEl(board, c) {
+  const cell = h("div", { class: "cell col-head-cell", style: "justify-content:space-between;gap:4px;cursor:default" });
+  cell.append(h("span", { class: "col-name", style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, colLabel(board, c)));
+  const menu = h("button", { class: "col-menu-btn", title: "Column options" });
+  menu.append(ico("dots", 13));
+  menu.addEventListener("click", (e) => { e.stopPropagation(); sysColMenu(menu, board, c); });
+  cell.append(menu);
+  return cell;
+}
+
+function sysColMenu(anchor, board, c) {
+  openDropdown(anchor, (el, close) => {
+    el.append(ddItem("pencil", "Rename column", () => {
+      close();
+      modalPrompt("Rename column", "Column name", colLabel(board, c), (v) => { board.colNames[c.id] = v; save(); render(); });
+    }));
+    if (c.id === "status" || c.id === "priority") el.append(ddItem("kanban", "Edit Labels", () => { close(); systemLabelEditor(anchor, c.id); }));
+    el.append(h("hr", { class: "dd-sep" }), ddItem("eyeOff", "Hide column", () => { close(); if (!board.hidden.includes(c.id)) board.hidden.push(c.id); save(); render(); }));
+  }, { minWidth: 190 });
 }
 
 function colMenu(anchor, board, col) {
@@ -2062,12 +2112,12 @@ function taskRowEl(board, group, task, tpl, cols) {
   rowMenuBtn.addEventListener("click", (e) => { e.stopPropagation(); taskMenu(rowMenuBtn, board, group, task); });
 
   const nameCell = h("div", { class: "cell name-col" }, nameSpan);
-  if (task.updates.length) {
-    const chip = h("button", { class: "updates-chip", title: `${task.updates.length} update(s)` });
-    chip.append(ico("chat", 13), h("span", {}, task.updates.length));
-    chip.addEventListener("click", (e) => { e.stopPropagation(); ui.panel = task.id; renderPanel(); });
-    nameCell.append(chip);
-  }
+  const hasUpd = task.updates.length > 0;
+  const chat = h("button", { class: "updates-chip" + (hasUpd ? " has" : ""), title: hasUpd ? `${task.updates.length} update(s)` : "Add an update" });
+  chat.append(ico("chat", 13));
+  if (hasUpd) chat.append(h("span", {}, task.updates.length));
+  chat.addEventListener("click", (e) => { e.stopPropagation(); ui.panel = task.id; renderPanel(); });
+  nameCell.append(chat);
   nameCell.append(h("span", { class: "row-actions" }, openBtn, rowMenuBtn));
   row.append(nameCell);
 
@@ -3866,9 +3916,27 @@ function sanitizeHTML(html) {
     .replace(/javascript:/gi, "");
 }
 
+function scaleImageWide(file, maxW, cb) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const ratio = Math.min(1, maxW / img.width);
+      const w = Math.max(1, Math.round(img.width * ratio));
+      const hh = Math.max(1, Math.round(img.height * ratio));
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = hh;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, hh);
+      cb(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 function richEditor(onPost) {
   const wrap = h("div", { class: "ip-composer" });
-  const area = h("div", { class: "rich-area", contenteditable: "true", "data-ph": "Write an update..." });
+  const area = h("div", { class: "rich-area", contenteditable: "true", "data-ph": "Write an update and mention others with @" });
   const cmd = (c, v) => { area.focus(); try { document.execCommand(c, false, v || null); } catch (e) {} };
   const btn = (inner, c, title) => {
     const b = h("button", { class: "rich-btn", title });
@@ -3877,6 +3945,30 @@ function richEditor(onPost) {
     b.addEventListener("click", () => cmd(c));
     return b;
   };
+
+  // image attach
+  const fileIn = h("input", { type: "file", accept: "image/*", style: "display:none" });
+  fileIn.addEventListener("change", () => {
+    const f = fileIn.files[0];
+    if (!f) return;
+    scaleImageWide(f, 640, (url) => { cmd("insertHTML", `<img src="${url}" style="max-width:100%;border-radius:8px;margin:6px 0;display:block">`); });
+    fileIn.value = "";
+  });
+  const clipBtn = h("button", { class: "rich-btn", title: "Attach image" });
+  clipBtn.append(ico("paperclip", 15));
+  clipBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  clipBtn.addEventListener("click", () => fileIn.click());
+
+  const insertText = (txt) => cmd("insertText", txt);
+  const atBtn = h("button", { class: "rich-btn", title: "Mention" });
+  atBtn.append(ico("at", 15));
+  atBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  atBtn.addEventListener("click", () => insertText("@"));
+  const emojiBtn = h("button", { class: "rich-btn", title: "Emoji" });
+  emojiBtn.append(ico("smile", 15));
+  emojiBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  emojiBtn.addEventListener("click", (e) => emojiPicker(e.currentTarget, (em) => insertText(em)));
+
   const toolbar = h("div", { class: "rich-toolbar" },
     btn("<b>B</b>", "bold", "Bold"),
     btn("<i>I</i>", "italic", "Italic"),
@@ -3884,18 +3976,31 @@ function richEditor(onPost) {
     btn("<s>S</s>", "strikeThrough", "Strikethrough"),
     h("span", { class: "rich-sep" }),
     btn(ico("list", 15), "insertUnorderedList", "Bullet list"),
-    btn(ico("list", 15), "insertOrderedList", "Numbered list"));
+    btn(ico("list", 15), "insertOrderedList", "Numbered list"),
+    h("span", { class: "rich-sep" }),
+    atBtn, clipBtn, emojiBtn);
+
   const postBtn = h("button", { class: "btn-primary", style: "align-self:flex-end;margin-top:8px" }, "Update");
   const post = () => {
+    const html = area.innerHTML.trim();
     const plain = (area.textContent || "").trim();
-    if (!plain) return;
-    onPost(sanitizeHTML(area.innerHTML.trim()), plain);
+    if (!plain && !/<img/i.test(html)) return;
+    onPost(sanitizeHTML(html), plain || "📎 image");
     area.innerHTML = "";
   };
   postBtn.addEventListener("click", post);
   area.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); post(); } });
-  wrap.append(toolbar, area, postBtn);
+  wrap.append(toolbar, area, fileIn, postBtn);
   return wrap;
+}
+
+function emojiPicker(anchor, pick) {
+  const EMOJI = ["👍", "🎉", "🔥", "✅", "❤️", "😊", "😂", "🙏", "👀", "🚀", "💡", "⚠️", "📌", "✨", "💪", "👏", "🤔", "😅", "🥳", "📷"];
+  openDropdown(anchor, (el, close) => {
+    const grid = h("div", { style: "display:grid;grid-template-columns:repeat(5,1fr);gap:4px" });
+    for (const e of EMOJI) grid.append(h("button", { class: "emoji-btn", onclick: () => { pick(e); close(); } }, e));
+    el.append(grid);
+  }, { minWidth: 200 });
 }
 
 /* ---------------- Render: item panel ---------------- */

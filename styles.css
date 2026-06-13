@@ -491,10 +491,20 @@ input, textarea, select {
   gap: 3px;
   color: var(--text-2);
   font-size: 11px;
-  padding: 2px 4px;
-  border-radius: 4px;
+  padding: 2px 5px;
+  border-radius: 12px;
+  flex: none;
+  visibility: hidden;
+}
+.g-row:hover .updates-chip { visibility: visible; }
+.updates-chip.has {
+  visibility: visible;
+  color: var(--primary);
+  background: var(--primary-soft);
+  font-weight: 700;
 }
 .updates-chip:hover { background: var(--surface-2); color: var(--primary); }
+.updates-chip.has:hover { background: var(--primary-soft); }
 
 .drag-handle {
   position: absolute;
@@ -1609,6 +1619,10 @@ input, textarea, select {
 .rich-area:empty::before { content: attr(data-ph); color: var(--text-2); }
 .update-text ul, .update-text ol { padding-left: 20px; }
 .update-text a { color: var(--primary); }
+.update-text img { max-width: 100%; border-radius: 8px; display: block; margin: 6px 0; }
+.rich-area img { max-width: 100%; border-radius: 8px; }
+.emoji-btn { font-size: 20px; padding: 4px; border-radius: 6px; line-height: 1; }
+.emoji-btn:hover { background: var(--surface-2); }
 
 /* ============ Empty workspace home ============ */
 
