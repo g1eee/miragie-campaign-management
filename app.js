@@ -1926,50 +1926,93 @@ function filterPanel(anchor) {
 
 function sortPanel(anchor) {
   const FIELDS = [
-    { id: "name", label: "Name" },
+    { id: "name", label: "Item" },
     { id: "status", label: "Status" },
     { id: "date", label: "Due date" },
     { id: "priority", label: "Priority" },
     { id: "updated", label: "Last updated" },
   ];
-  openDropdown(anchor, (el, close) => {
-    el.append(h("div", { class: "dd-title" }, "Sort by"));
-    for (const f of FIELDS) {
-      const active = ui.sort && ui.sort.field === f.id;
-      const it = h("div", { class: "dd-item", onclick: () => {
-        if (active) ui.sort.dir = ui.sort.dir === "asc" ? "desc" : "asc";
-        else ui.sort = { field: f.id, dir: "asc" };
-        softRender();
-        refreshDd();
-      } }, h("span", { style: "flex:1" }, f.label));
-      if (active) it.append(ico(ui.sort.dir === "asc" ? "arrowUp" : "arrowDown", 14));
-      el.append(it);
-    }
-    if (ui.sort) {
-      el.append(h("hr", { class: "dd-sep" }), h("button", { class: "dd-footer-btn", onclick: () => { ui.sort = null; close(); softRender(); } }, "Clear sort"));
-    }
-  }, { minWidth: 200 });
+  openDropdown(anchor, (el) => {
+    el.classList.add("sortby-pop");
+    el.append(h("div", { class: "qf-head" }, h("b", {}, "Sort by"),
+      h("button", { class: "qf-clear", disabled: !ui.sort, onclick: () => { ui.sort = null; softRender(); refreshDd(); } }, "Clear")));
+
+    const colSel = h("select", { class: "sortby-sel" });
+    colSel.append(h("option", { value: "" }, "Choose column"));
+    for (const f of FIELDS) colSel.append(h("option", { value: f.id }, f.label));
+    colSel.value = ui.sort ? ui.sort.field : "";
+    colSel.addEventListener("change", () => {
+      if (!colSel.value) { ui.sort = null; } else { ui.sort = { field: colSel.value, dir: (ui.sort && ui.sort.dir) || "asc" }; }
+      softRender(); refreshDd();
+    });
+
+    const dirSel = h("select", { class: "sortby-sel sortby-dir" });
+    dirSel.append(h("option", { value: "asc" }, "↑ Ascending"), h("option", { value: "desc" }, "↓ Descending"));
+    dirSel.value = ui.sort ? ui.sort.dir : "asc";
+    dirSel.disabled = !ui.sort;
+    dirSel.addEventListener("change", () => { if (ui.sort) { ui.sort.dir = dirSel.value; softRender(); refreshDd(); } });
+
+    el.append(h("div", { class: "sortby-row" }, h("span", { class: "sortby-grip" }, ico("grip", 14)), colSel, dirSel));
+    el.append(h("div", { class: "sortby-new muted" }, "+ New sort"));
+  }, { minWidth: 460 });
 }
 
 function hidePanel(anchor, board) {
   openDropdown(anchor, (el) => {
-    el.append(h("div", { class: "dd-title" }, "Display columns"));
-    const items = [...COLUMNS.map(c => ({ id: c.id, label: colLabel(board, c) })),
-                   ...board.columns.map(c => ({ id: c.id, label: c.name }))];
-    for (const c of items) {
-      const cb = h("input", { type: "checkbox" });
-      cb.checked = !board.hidden.includes(c.id);
-      const row = h("label", { class: "dd-check" }, cb, h("span", {}, c.label));
-      cb.addEventListener("change", () => {
-        if (cb.checked) board.hidden = board.hidden.filter(x => x !== c.id);
-        else board.hidden.push(c.id);
-        save();
-        softRender();
-        refreshDd();
-      });
-      el.append(row);
-    }
-  }, { minWidth: 200 });
+    el.classList.add("hide-pop");
+    el.append(h("div", { class: "qf-head" }, h("b", {}, "Display columns")));
+    const search = h("input", { class: "hide-search", type: "text", placeholder: "Find columns to show / hide" });
+    el.append(h("div", { class: "hide-searchwrap" }, ico("search", 14), search));
+    const host = h("div", {});
+    el.append(host);
+
+    // Item column = the locked text column (name). Subitem columns = everything else.
+    const sub = [...COLUMNS.map(c => ({ id: c.id, label: colLabel(board, c) })),
+                 ...board.columns.map(c => ({ id: c.id, label: c.name }))];
+
+    const checkRow = (label, sub2, on, fn, cls) => {
+      const cb = h("input", { type: "checkbox" }); cb.checked = on;
+      cb.addEventListener("change", fn);
+      return h("label", { class: "hide-row " + (cls || "") }, cb,
+        h("span", { class: "hide-label" }, label),
+        sub2 ? h("span", { class: "hide-sub" }, sub2) : null);
+    };
+
+    const draw = () => {
+      host.replaceChildren();
+      const f = search.value.toLowerCase();
+      const subF = sub.filter(c => !f || c.label.toLowerCase().includes(f));
+      const allOn = subF.length > 0 && subF.every(c => !board.hidden.includes(c.id));
+
+      host.append(checkRow("All columns", subF.length + " selected", allOn, () => {
+        const turnOn = !allOn;
+        subF.forEach(c => { if (turnOn) board.hidden = board.hidden.filter(x => x !== c.id); else if (!board.hidden.includes(c.id)) board.hidden.push(c.id); });
+        save(); softRender(); draw();
+      }, "hide-all"));
+
+      if (!f || "item".includes(f)) {
+        host.append(h("div", { class: "hide-group" }, "Item columns"));
+        const locked = h("label", { class: "hide-row hide-locked", title: "The Item column can't be hidden" },
+          h("input", { type: "checkbox", checked: true, disabled: true }),
+          h("span", { class: "hide-label" }, colLabel(board, { id: "name", label: "Item" })));
+        host.append(locked);
+      }
+
+      if (subF.length) {
+        host.append(h("div", { class: "hide-group" }, "Subitem columns"));
+        for (const c of subF) host.append(checkRow(c.label, null, !board.hidden.includes(c.id), () => {
+          if (board.hidden.includes(c.id)) board.hidden = board.hidden.filter(x => x !== c.id);
+          else board.hidden.push(c.id);
+          save(); softRender(); draw();
+        }));
+      } else {
+        host.append(h("div", { class: "muted", style: "padding:8px" }, "No matches"));
+      }
+    };
+    search.addEventListener("input", draw);
+    search.addEventListener("keydown", (e) => e.stopPropagation());
+    draw();
+  }, { minWidth: 320 });
 }
 
 /* ---------------- Render: table view ---------------- */

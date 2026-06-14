@@ -545,6 +545,28 @@ input, textarea, select {
 .qf-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qf-count { color: var(--text-2); font-size: 12px; flex: none; }
 
+/* Sort by panel */
+.sortby-pop { padding: 16px 18px; }
+.sortby-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.sortby-grip { color: var(--text-2); display: inline-flex; cursor: grab; }
+.sortby-sel { flex: 1; height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 13px; cursor: pointer; }
+.sortby-dir { flex: none; width: 150px; }
+.sortby-sel:focus { border-color: var(--primary); outline: none; }
+.sortby-new { margin-top: 12px; font-size: 13px; }
+
+/* Display columns (Hide) panel */
+.hide-pop { padding: 16px 18px; }
+.hide-searchwrap { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-2); margin-bottom: 8px; }
+.hide-search { flex: 1; border: none; background: none; outline: none; color: var(--text); font-size: 13px; }
+.hide-group { font-size: 11px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: .4px; margin: 10px 0 4px; }
+.hide-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; cursor: pointer; }
+.hide-row:hover { background: var(--surface-2); }
+.hide-row .hide-label { flex: 1; font-size: 13px; }
+.hide-row .hide-sub { font-size: 12px; color: var(--text-2); }
+.hide-all { border-bottom: 1px solid var(--border); border-radius: 0; padding-bottom: 10px; margin-bottom: 2px; }
+.hide-locked { opacity: .7; cursor: default; }
+.hide-locked:hover { background: none; }
+
 /* updates/feedback chip — pinned at the right edge of the name column, always visible */
 .updates-chip {
   position: absolute; right: 0; top: 0; bottom: 0; width: 48px;
