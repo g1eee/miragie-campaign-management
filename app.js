@@ -2352,7 +2352,22 @@ function sysColMenu(anchor, board, c) {
     }));
     if (c.id === "status" || c.id === "priority") el.append(ddItem("kanban", "Edit Labels", () => { close(); systemLabelEditor(anchor, c.id); }));
     el.append(h("hr", { class: "dd-sep" }), ddItem("eyeOff", "Hide column", () => { close(); if (!board.hidden.includes(c.id)) board.hidden.push(c.id); save(); render(); }));
+    el.append(ddItem("trash", "Delete column", () => { close(); deleteSysColumn(board, c); }, "danger"));
   }, { minWidth: 190 });
+}
+
+// system columns hold built-in data, so "delete" removes them from this board's view
+// (re-add later from the Hide menu). Undo restores immediately.
+function deleteSysColumn(board, c) {
+  if (!confirm(`Delete the "${colLabel(board, c)}" column from this board?`)) return;
+  if (!board.hidden.includes(c.id)) board.hidden.push(c.id);
+  if (Array.isArray(board.colOrder)) board.colOrder = board.colOrder.filter(id => id !== c.id);
+  save();
+  render();
+  toast(`Column "${colLabel(board, c)}" deleted`, () => {
+    board.hidden = board.hidden.filter(id => id !== c.id);
+    save(); render();
+  });
 }
 
 function colMenu(anchor, board, col) {
