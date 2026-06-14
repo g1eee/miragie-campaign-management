@@ -259,9 +259,6 @@ input, textarea, select {
 
 .board-head { padding: 18px 32px 0 16px; flex: none; }
 .toolbar { padding-left: 16px; }
-/* board-canvas has NO left padding so frozen columns sit at the scroll edge and
-   nothing bleeds into a left gap; right padding kept for breathing room */
-.board-canvas { padding-left: 0; }
 
 .bh-top { display: flex; align-items: center; gap: 10px; }
 .board-title {
@@ -386,7 +383,7 @@ input, textarea, select {
 
 /* ============ Groups / Table ============ */
 
-.board-canvas { padding: 4px 32px 140px; flex: 1; }
+.board-canvas { padding: 4px 32px 140px 0; flex: 1; }
 /* single scroll container so sticky (frozen) columns pin correctly */
 .board-canvas.h-scroll { overflow: auto; min-height: 0; min-width: 0; }
 .group-wrap { min-width: 940px; }
@@ -2163,9 +2160,9 @@ html.gated, html.gated body { overflow: hidden; }
 #auth-gate {
   position: fixed; inset: 0; z-index: 9999;
   display: flex; align-items: center; justify-content: center; padding: 24px;
-  background: linear-gradient(135deg, #fdf0f4 0%, #eef3fb 50%, #f5eef8 100%);
+  background: var(--surface);
 }
-[data-theme="dark"] #auth-gate { background: linear-gradient(135deg, #1c1922 0%, #181f2a 55%, #201a26 100%); }
+[data-theme="dark"] #auth-gate { background: var(--surface); }
 .auth-card {
   width: 100%; max-width: 380px; background: var(--bg); border: 1px solid var(--border);
   border-radius: 16px; box-shadow: 0 20px 60px rgba(60, 40, 110, 0.25);
@@ -2255,3 +2252,30 @@ html.gated, html.gated body { overflow: hidden; }
 .cvr-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .cvr-row label { font-size: 13px; color: var(--text-2); }
 .cvr-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+
+/* ============ Update composer (monday-style card) + panel tabs ============ */
+.rich-card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg); }
+.rich-card:focus-within { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+.rich-card .rich-toolbar { border: none; border-bottom: 1px solid var(--border); border-radius: 0; background: var(--bg); padding: 6px 8px; }
+.rich-card .rich-area { border: none; border-radius: 0; min-height: 64px; }
+.rich-card .rich-area:focus { border: none; }
+.rich-footer { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-top: 1px solid var(--border); background: var(--bg); }
+.rich-actions { display: flex; align-items: center; gap: 2px; }
+.rich-act { width: 30px; height: 30px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-2); }
+.rich-act:hover { background: var(--surface-2); color: var(--text); }
+.rich-post { height: 32px; padding: 0 16px; border-radius: 7px; align-self: center; }
+
+.ip-tabbar { display: flex; gap: 2px; border-bottom: 1px solid var(--border); padding: 0 16px; margin-top: 8px; flex: none; }
+.ip-tab { display: inline-flex; align-items: center; gap: 6px; padding: 9px 10px; color: var(--text-2); border-bottom: 2px solid transparent; font-size: 13px; }
+.ip-tab:hover { color: var(--text); }
+.ip-tab.active { color: var(--text); border-bottom-color: var(--primary); font-weight: 600; }
+.ip-tabbody { padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; flex: 1; min-height: 0; }
+.ip-update-hint { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-2); }
+.ip-update-hint > span { display: inline-flex; align-items: center; gap: 5px; }
+.ip-hint-sep { width: 1px; height: 14px; background: var(--border); }
+.ip-empty { color: var(--text-2); font-size: 13px; padding: 6px 0; }
+.ip-activity { display: flex; flex-direction: column; }
+.ip-act-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.ip-act-row:last-child { border-bottom: none; }
+.ip-act-txt { flex: 1; color: var(--text-2); }
+.ip-act-row time { color: var(--text-2); font-size: 11px; }

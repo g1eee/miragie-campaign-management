@@ -363,8 +363,8 @@ function migrate() {
     if (adminPerson) adminPerson.email = ADMIN_EMAIL;
   }
   if (adminPerson) adminPerson.role = "Owner";
-  if (!state.skin) state.skin = "frieren";
-  if (!state.palette) state.palette = "sakura";
+  // clean white theme now; accent comes from the avatar character
+  state.skin = "default";
   // one-time: give members anime character avatars (user-supplied art)
   if (!state.animeApplied) {
     state.people.forEach((p, i) => { if (!p.avatar) p.avatar = ANIME_CHARS[i % ANIME_CHARS.length].img; });
@@ -1012,6 +1012,28 @@ function textColorOn(hex) {
 // render a workspace logo glyph: custom icon when set, else letter
 const wsGlyph = (w, iconSize) => (w.icon ? ico(w.icon, iconSize) : w.letter);
 
+// Clean white theme + accent color derived from the user's avatar character
+const CHAR_ACCENT = {
+  frieren: "#4f8f93", fern: "#7d5bc0", stark: "#d05a37", himmel: "#3f7fcf", heiter: "#4f9e63",
+};
+const hexToRgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const rgbaOf = (h, a) => { const [r, g, b] = hexToRgb(h); return `rgba(${r},${g},${b},${a})`; };
+const darkenHex = (h, amt) => { const [r, g, b] = hexToRgb(h).map(v => Math.max(0, Math.round(v * (1 - amt)))); return `rgb(${r},${g},${b})`; };
+function avatarAccent() {
+  const p = (typeof me === "function") ? me() : null;
+  let k = p && p.character;
+  if (!k && p && p.avatar) { const m = /characters\/([a-z]+)\./i.exec(p.avatar); if (m) k = m[1].toLowerCase(); }
+  return CHAR_ACCENT[k] || "#0073ea";
+}
+function applyAccent() {
+  const acc = avatarAccent();
+  const ds = document.documentElement.style;
+  ds.setProperty("--primary", acc);
+  ds.setProperty("--primary-hover", darkenHex(acc, 0.16));
+  ds.setProperty("--primary-soft", rgbaOf(acc, 0.10));
+  ds.setProperty("--primary-selected", rgbaOf(acc, 0.16));
+}
+
 function switchWorkspace(id) {
   if (ui.whSel) ui.whSel.clear();
   ui.whArchived = false;
@@ -1220,11 +1242,6 @@ function renderAuthGate() {
   if (!gate) { gate = h("div", { id: "auth-gate" }); document.body.appendChild(gate); }
   gate.replaceChildren();
 
-  // falling spores over the soft gradient
-  const gsak = h("div", { class: "sakura sakura-gate" });
-  for (let i = 0; i < 12; i++) gsak.append(h("span", { class: "petal" }));
-  gate.append(gsak);
-
   const card = h("div", { class: "auth-card" });
   const brand = h("div", { class: "auth-brand" },
     h("svg", { width: "26", height: "26", viewBox: "0 0 24 24" }), // dots logo drawn below
@@ -1317,7 +1334,7 @@ function applyRefocus() {
 function renderTopbar() {
   document.documentElement.dataset.theme = state.theme;
   document.documentElement.dataset.skin = state.skin || "default";
-  document.documentElement.dataset.palette = state.palette || "sakura";
+  applyAccent();
   const themeBtn = q("#theme-btn");
   themeBtn.replaceChildren(ico(state.theme === "light" ? "moon" : "sun", 17));
   const bell = q("#bell-btn");
@@ -4738,7 +4755,8 @@ function scaleImageWide(file, maxW, cb) {
 
 function richEditor(onPost) {
   const wrap = h("div", { class: "ip-composer" });
-  const area = h("div", { class: "rich-area", contenteditable: "true", "data-ph": "Write an update and mention others with @" });
+  const card = h("div", { class: "rich-card" });
+  const area = h("div", { class: "rich-area", contenteditable: "true", "data-ph": "Write an update..." });
   const cmd = (c, v) => { area.focus(); try { document.execCommand(c, false, v || null); } catch (e) {} };
   const btn = (inner, c, title) => {
     const b = h("button", { class: "rich-btn", title });
@@ -4747,42 +4765,46 @@ function richEditor(onPost) {
     b.addEventListener("click", () => cmd(c));
     return b;
   };
+  const actBtn = (icon, title, fn) => {
+    const b = h("button", { class: "rich-act", title });
+    b.append(typeof icon === "string" ? h("span", { style: "font-weight:700;font-size:12px" }, icon) : ico(icon, 16));
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", fn);
+    return b;
+  };
 
-  // image attach
+  // text color
+  const colorBtn = h("button", { class: "rich-btn", title: "Text color" }, h("span", { style: "border-bottom:3px solid var(--primary);font-weight:700;line-height:1" }, "A"));
+  colorBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  colorBtn.addEventListener("click", (e) => openDropdown(e.currentTarget, (dd, close) => {
+    const grid = h("div", { style: "display:grid;grid-template-columns:repeat(6,1fr);gap:6px" });
+    for (const c of ["#323338", "#0073ea", "#00c875", "#e2445c", "#fdab3d", "#a25ddc", "#ff642e", "#0086c0", "#9d50dd", "#037f4c", "#cab641", "#df2f4a"])
+      grid.append(h("button", { class: "swatch", style: `background:${c}`, onclick: () => { cmd("foreColor", c); close(); } }));
+    dd.append(grid);
+  }, { minWidth: 180 }));
+
+  const linkBtn = actBtn("link", "Add link", () => { const u = prompt("Link URL"); if (u) cmd("createLink", /^https?:/.test(u) ? u : "https://" + u); });
+
+  // image attach (inline into the update)
   const fileIn = h("input", { type: "file", accept: "image/*", style: "display:none" });
   fileIn.addEventListener("change", () => {
-    const f = fileIn.files[0];
-    if (!f) return;
-    scaleImageWide(f, 640, (url) => { cmd("insertHTML", `<img src="${url}" style="max-width:100%;border-radius:8px;margin:6px 0;display:block">`); });
+    const f = fileIn.files[0]; if (!f) return;
+    scaleImageWide(f, 640, (url) => cmd("insertHTML", `<img src="${url}" style="max-width:100%;border-radius:8px;margin:6px 0;display:block">`));
     fileIn.value = "";
   });
-  const clipBtn = h("button", { class: "rich-btn", title: "Attach image" });
-  clipBtn.append(ico("paperclip", 15));
-  clipBtn.addEventListener("mousedown", (e) => e.preventDefault());
-  clipBtn.addEventListener("click", () => fileIn.click());
-
-  const insertText = (txt) => cmd("insertText", txt);
-  const atBtn = h("button", { class: "rich-btn", title: "Mention" });
-  atBtn.append(ico("at", 15));
-  atBtn.addEventListener("mousedown", (e) => e.preventDefault());
-  atBtn.addEventListener("click", () => insertText("@"));
-  const emojiBtn = h("button", { class: "rich-btn", title: "Emoji" });
-  emojiBtn.append(ico("smile", 15));
-  emojiBtn.addEventListener("mousedown", (e) => e.preventDefault());
-  emojiBtn.addEventListener("click", (e) => emojiPicker(e.currentTarget, (em) => insertText(em)));
 
   const toolbar = h("div", { class: "rich-toolbar" },
     btn("<b>B</b>", "bold", "Bold"),
     btn("<i>I</i>", "italic", "Italic"),
     btn("<u>U</u>", "underline", "Underline"),
     btn("<s>S</s>", "strikeThrough", "Strikethrough"),
+    colorBtn,
     h("span", { class: "rich-sep" }),
     btn(ico("list", 15), "insertUnorderedList", "Bullet list"),
-    btn(ico("list", 15), "insertOrderedList", "Numbered list"),
-    h("span", { class: "rich-sep" }),
-    atBtn, clipBtn, emojiBtn);
+    btn(ico("numbers", 15), "insertOrderedList", "Numbered list"),
+    linkBtn);
 
-  const postBtn = h("button", { class: "btn-primary", style: "align-self:flex-end;margin-top:8px" }, "Update");
+  const postBtn = h("button", { class: "btn-primary rich-post" }, "Update");
   const post = () => {
     const html = area.innerHTML.trim();
     const plain = (area.textContent || "").trim();
@@ -4792,7 +4814,17 @@ function richEditor(onPost) {
   };
   postBtn.addEventListener("click", post);
   area.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); post(); } });
-  wrap.append(toolbar, area, fileIn, postBtn);
+
+  const footer = h("div", { class: "rich-footer" },
+    h("div", { class: "rich-actions" },
+      actBtn("at", "Mention", () => cmd("insertText", "@")),
+      actBtn("paperclip", "Attach image", () => fileIn.click()),
+      actBtn("GIF", "Add a GIF", () => toast("GIFs — coming soon in demo")),
+      actBtn("smile", "Emoji", (ev) => emojiPicker(ev.currentTarget, (em) => cmd("insertText", em)))),
+    postBtn);
+
+  card.append(toolbar, area, footer);
+  wrap.append(card, fileIn);
   return wrap;
 }
 
@@ -4885,53 +4917,69 @@ function renderPanel() {
   });
   panel.append(h("div", { class: "ip-section" }, h("h4", {}, "Description"), desc));
 
-  // files
-  const filesGrid = h("div", { class: "ip-files" });
-  for (const f of task.files) {
-    const x = h("button", { class: "ip-file-x", title: "Remove", onclick: () => { task.files = task.files.filter(y => y.id !== f.id); touch(task); save(); render(); } });
-    x.append(ico("x", 12));
-    filesGrid.append(h("div", { class: "ip-file", title: f.name }, h("img", { src: f.dataURL, alt: f.name }), x));
+  // ---- tabbed lower area: Updates | Files | Activity Log (monday-style)
+  ui.panelTab = ui.panelTab || "updates";
+  const tabBar = h("div", { class: "ip-tabbar" });
+  for (const [id, label, icon] of [["updates", "Updates", "home"], ["files", "Files", "paperclip"], ["activity", "Activity Log", "clock"]]) {
+    const t = h("button", { class: "ip-tab" + (ui.panelTab === id ? " active" : ""), onclick: () => { ui.panelTab = id; renderPanel(); } }, ico(icon, 15), h("span", {}, label));
+    tabBar.append(t);
   }
-  const fileIn = h("input", { type: "file", accept: "image/*", multiple: true, style: "display:none" });
-  fileIn.addEventListener("change", () => {
-    const files = [...fileIn.files];
-    let pending = files.length;
-    for (const file of files) scaleImage(file, (url) => {
-      task.files.push({ id: uid(), name: file.name, dataURL: url });
-      if (--pending === 0) { touch(task); save(); render(); toast(`${files.length} file(s) added`); }
+  panel.append(tabBar);
+  const body = h("div", { class: "ip-tabbody" });
+
+  if (ui.panelTab === "updates") {
+    body.append(h("div", { class: "ip-update-hint" },
+      h("span", {}, ico("mail", 14), h("span", {}, "Update via email")),
+      h("span", { class: "ip-hint-sep" }),
+      h("span", {}, ico("chat", 14), h("span", {}, "Give feedback"))));
+    body.append(richEditor((html, plain) => {
+      task.updates.unshift({ id: uid(), by: state.user, html, text: plain, at: Date.now() });
+      touch(task); save(); render();
+    }));
+    if (!task.updates.length) {
+      body.append(h("div", { class: "ip-empty" }, "No updates yet. Be the first to write one."));
+    }
+    for (const u of task.updates) {
+      const author = personById(u.by);
+      const del = h("button", { class: "row-act", title: "Delete update", onclick: () => { task.updates = task.updates.filter(x => x.id !== u.id); save(); render(); } });
+      del.append(ico("trash", 13));
+      const txt = h("div", { class: "update-text" });
+      if (u.html) txt.innerHTML = u.html; else txt.append(u.text || "");
+      body.append(h("div", { class: "update-card" },
+        h("div", { class: "update-head" }, avatarEl(author, 24), h("b", {}, author ? author.name : "Unknown"), h("time", {}, relTime(u.at)), del),
+        txt));
+    }
+  } else if (ui.panelTab === "files") {
+    const filesGrid = h("div", { class: "ip-files" });
+    for (const f of task.files) {
+      const x = h("button", { class: "ip-file-x", title: "Remove", onclick: () => { task.files = task.files.filter(y => y.id !== f.id); touch(task); save(); render(); } });
+      x.append(ico("x", 12));
+      filesGrid.append(h("div", { class: "ip-file", title: f.name }, h("img", { src: f.dataURL, alt: f.name }), x));
+    }
+    const fileIn = h("input", { type: "file", accept: "image/*", multiple: true, style: "display:none" });
+    fileIn.addEventListener("change", () => {
+      const files = [...fileIn.files];
+      let pending = files.length;
+      for (const file of files) scaleImage(file, (url) => {
+        task.files.push({ id: uid(), name: file.name, dataURL: url });
+        if (--pending === 0) { touch(task); save(); render(); toast(`${files.length} file(s) added`); }
+      });
     });
-  });
-  const addFile = h("div", { class: "ip-file-add", onclick: () => fileIn.click() }, ico("plus", 18), h("span", {}, "Upload"));
-  filesGrid.append(addFile);
-  panel.append(h("div", { class: "ip-section" }, h("h4", {}, `Files (${task.files.length})`), filesGrid, fileIn));
-
-  // updates
-  const updates = h("div", { class: "ip-updates" });
-  updates.append(h("h4", { style: "font-size:13px;color:var(--text-2)" }, `Updates (${task.updates.length})`));
-
-  updates.append(richEditor((html, plain) => {
-    task.updates.unshift({ id: uid(), by: state.user, html, text: plain, at: Date.now() });
-    touch(task);
-    save();
-    render();
-  }));
-
-  for (const u of task.updates) {
-    const author = personById(u.by);
-    const del = h("button", { class: "row-act", title: "Delete update", onclick: () => {
-      task.updates = task.updates.filter(x => x.id !== u.id);
-      save();
-      render();
-    } });
-    del.append(ico("trash", 13));
-    const txt = h("div", { class: "update-text" });
-    if (u.html) txt.innerHTML = u.html; else txt.append(u.text || "");
-    updates.append(h("div", { class: "update-card" },
-      h("div", { class: "update-head" }, avatarEl(author, 24), h("b", {}, author ? author.name : "Unknown"), h("time", {}, relTime(u.at)), del),
-      txt));
+    const addFile = h("div", { class: "ip-file-add", onclick: () => fileIn.click() }, ico("plus", 18), h("span", {}, "Upload"));
+    filesGrid.append(addFile);
+    body.append(filesGrid, fileIn);
+  } else {
+    // activity log
+    const log = h("div", { class: "ip-activity" });
+    const entry = (who, action, at) => h("div", { class: "ip-act-row" },
+      avatarEl(personById(who), 22), h("span", { class: "ip-act-txt" }, h("b", {}, (personById(who) || {}).name || "Someone"), " " + action), h("time", {}, relTime(at)));
+    log.append(entry(task.updatedBy, "updated this item", task.updatedAt));
+    for (const u of task.updates) log.append(entry(u.by, "posted an update", u.at));
+    log.append(entry(task.creator || task.updatedBy, "created this item", task.createdAt));
+    body.append(log);
   }
 
-  panel.append(updates);
+  panel.append(body);
   root.append(panel);
 }
 
@@ -5004,16 +5052,6 @@ function profileMenu(anchor) {
     el.append(h("hr", { class: "dd-sep" }));
     el.append(ddItem("smile", "Choose anime character", () => { close(); characterPicker(anchor, me()); }));
     el.append(ddItem("personPlus", "Manage members", () => { close(); peopleManager(anchor); }));
-    el.append(ddItem("vibe", (state.skin === "frieren" ? "Anime theme: On" : "Anime theme: Off"), () => {
-      state.skin = state.skin === "frieren" ? "default" : "frieren"; save(); close(); render();
-      toast(state.skin === "frieren" ? "Anime theme on" : "Anime theme off");
-    }));
-    if (state.skin === "frieren") {
-      const palName = (PALETTES.find(p => p.id === state.palette) || PALETTES[0]).name;
-      const palItem = ddItem("smile", "Theme palette: " + palName, () => { close(); palettePicker(anchor); });
-      palItem.querySelector(".ico").replaceWith(h("span", { class: "pal-dot", style: `background:${(PALETTES.find(p => p.id === state.palette) || PALETTES[0]).dot}` }));
-      el.append(palItem);
-    }
     el.append(ddItem(state.theme === "light" ? "moon" : "sun", state.theme === "light" ? "Dark mode" : "Light mode", () => {
       state.theme = state.theme === "light" ? "dark" : "light"; save(); close(); render();
     }));
