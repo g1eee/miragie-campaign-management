@@ -2818,9 +2818,11 @@ function colFilesCellEl(task, col) {
       cur.forEach((f, i) => {
         const del = h("button", { class: "row-act", onclick: (e) => { e.stopPropagation(); const a = [...cur]; a.splice(i, 1); setColVal(task, col, a); draw(); softRenderTable(getBoard()); } }); del.append(ico("trash", 13));
         const url = fileUrl(f);
+        const isDoc = f && f.kind === "doc";
         const label = url ? h("a", { href: url, target: "_blank", rel: "noopener", style: "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", onclick: (e) => e.stopPropagation() }, fileName(f))
                           : h("span", { style: "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, fileName(f));
-        list.append(h("div", { class: "dd-item", style: "gap:6px" }, ico(url ? "link" : "paperclip", 13), label, del));
+        const rowEl = h("div", { class: "dd-item", style: "gap:6px" + (isDoc ? ";cursor:pointer" : ""), onclick: isDoc ? (() => { close(); docEditor(task, col, f); }) : null }, ico(isDoc ? "doc" : (url ? "link" : "paperclip"), 13), label, del);
+        list.append(rowEl);
       });
     };
     draw();
@@ -2834,13 +2836,96 @@ function colFilesCellEl(task, col) {
     const opt = (icon, label, fn) => { const it = ddItem(icon, label, fn); dd.append(it); return it; };
     opt("download", "From Computer", () => fileIn.click());
     opt("camera", "From Webcam", () => toast("Webcam capture — coming soon in demo"));
-    opt("doc", "Doc", () => { const n = prompt("Document name"); if (n && n.trim()) { add({ name: n.trim() }); draw(); } });
+    opt("doc", "Doc", () => {
+      const entry = { id: uid(), name: "Untitled doc", kind: "doc", html: "" };
+      const a = Array.isArray(task.cells[col.id]) ? [...task.cells[col.id]] : [];
+      a.push(entry); setColVal(task, col, a); close(); softRenderTable(getBoard());
+      docEditor(task, col, entry);
+    });
     opt("link", "From Link", () => { let u = prompt("Paste a link (URL)"); if (u && u.trim()) { u = u.trim(); if (!/^https?:\/\//i.test(u)) u = "https://" + u; add({ name: u, url: u }); draw(); } });
     opt("cloud", "From Google Drive", () => toast("Google Drive — coming soon in demo"));
     opt("cloud", "From Dropbox", () => toast("Dropbox — coming soon in demo"));
     opt("folder", "From Box", () => toast("Box — coming soon in demo"));
   }, { minWidth: 230 }));
   return cell;
+}
+
+// --- monday-style Doc editor (block-based) opened from a Files "Doc" entry ---
+function docEditor(task, col, entry) {
+  openModal((card, close) => {
+    card.classList.add("doc-modal");
+    const board = getBoard();
+
+    const persist = () => {
+      entry.html = sanitizeHTML(area.innerHTML);
+      entry.name = (titleIn.value.trim() || "Untitled doc");
+      const arr = Array.isArray(task.cells[col.id]) ? task.cells[col.id] : [];
+      touch(task); setColVal(task, col, arr);
+    };
+    const closeSave = () => { persist(); softRenderTable(board); close(); };
+
+    // header
+    const closeBtn = h("button", { class: "icon-btn", onclick: closeSave }); closeBtn.append(ico("x", 16));
+    card.append(h("div", { class: "doc-head" },
+      h("div", { class: "doc-crumb muted" }, board.name + " › " + task.name + " › Doc"),
+      closeBtn));
+
+    const titleIn = h("input", { class: "doc-title", value: entry.name === "Untitled doc" ? "" : entry.name, placeholder: "Untitled doc" });
+    card.append(titleIn);
+
+    // editor
+    const area = h("div", { class: "doc-area", contenteditable: "true", "data-ph": "Type here. Use the toolbar for headings, lists, checklist…" });
+    area.innerHTML = entry.html || "";
+    const cmd = (c, v) => { area.focus(); try { document.execCommand(c, false, v || null); } catch (e) {} };
+    const block = (tag) => cmd("formatBlock", tag);
+
+    // toolbar
+    const tb = h("div", { class: "doc-toolbar" });
+    const tbtn = (label, title, fn, html) => {
+      const b = h("button", { class: "doc-tbtn", title });
+      if (html) b.innerHTML = html; else b.append(typeof label === "string" ? h("span", {}, label) : label);
+      b.addEventListener("mousedown", (e) => e.preventDefault());
+      b.addEventListener("click", fn);
+      return b;
+    };
+    const blockSel = h("select", { class: "doc-block-sel", title: "Text style" });
+    [["p", "Normal text"], ["h1", "Large title"], ["h2", "Medium title"], ["h3", "Small title"], ["blockquote", "Quote"], ["pre", "Code"]]
+      .forEach(([t, l]) => blockSel.append(h("option", { value: t }, l)));
+    blockSel.addEventListener("mousedown", (e) => e.stopPropagation());
+    blockSel.addEventListener("change", () => { block(blockSel.value === "p" ? "div" : blockSel.value); });
+
+    const insertChecklist = () => cmd("insertHTML", `<div class="doc-todo"><input type="checkbox"><span>To-do</span></div><p><br></p>`);
+    const insertDivider = () => cmd("insertHTML", `<hr><p><br></p>`);
+    const imgIn = h("input", { type: "file", accept: "image/*", style: "display:none" });
+    imgIn.addEventListener("change", () => { const f = imgIn.files[0]; if (f) scaleImageWide(f, 900, (url) => cmd("insertHTML", `<img src="${url}" style="max-width:100%;border-radius:8px;margin:6px 0;display:block">`)); imgIn.value = ""; });
+
+    tb.append(
+      blockSel,
+      h("span", { class: "doc-sep" }),
+      tbtn(null, "Bold", () => cmd("bold"), "<b>B</b>"),
+      tbtn(null, "Italic", () => cmd("italic"), "<i>I</i>"),
+      tbtn(null, "Underline", () => cmd("underline"), "<u>U</u>"),
+      h("span", { class: "doc-sep" }),
+      tbtn(ico("list", 16), "Bulleted list", () => cmd("insertUnorderedList")),
+      tbtn(ico("numbers", 16), "Numbered list", () => cmd("insertOrderedList")),
+      tbtn(ico("check", 16), "Checklist", insertChecklist),
+      h("span", { class: "doc-sep" }),
+      tbtn("―", "Divider", insertDivider),
+      tbtn(ico("gallery", 16), "Image", () => imgIn.click()),
+      tbtn(ico("link", 16), "Link", () => { let u = prompt("Link URL"); if (u) cmd("createLink", /^https?:/.test(u) ? u : "https://" + u); }),
+    );
+    card.append(tb, area, imgIn);
+
+    // toggle checklist items + autosave
+    area.addEventListener("click", (e) => {
+      if (e.target && e.target.type === "checkbox") { e.target.toggleAttribute("checked"); persist(); }
+    });
+    let t = 0;
+    area.addEventListener("input", () => { clearTimeout(t); t = setTimeout(persist, 500); });
+    titleIn.addEventListener("input", () => { clearTimeout(t); t = setTimeout(persist, 500); });
+
+    setTimeout(() => area.focus(), 0);
+  });
 }
 
 // --- Connect boards: link an item from another board ---
