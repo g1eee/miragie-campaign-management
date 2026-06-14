@@ -2033,18 +2033,8 @@ function tableViewEl(board) {
   addG.append(ico("plus", 15), h("span", {}, "Add new group"));
   wrap.append(addG);
 
-  // Freeze pane: keep checkbox + Item columns in place on horizontal scroll.
-  let frozen = null, ticking = false;
-  const syncFreeze = () => {
-    ticking = false;
-    if (!frozen) frozen = canvas.querySelectorAll(".cell.check-col, .cell.name-col, .group-header");
-    const x = canvas.scrollLeft;
-    for (const el of frozen) el.style.transform = x ? `translateX(${x}px)` : "";
-  };
-  canvas.addEventListener("scroll", () => {
-    if (!ticking) { ticking = true; requestAnimationFrame(syncFreeze); }
-  });
-
+  // Freeze pane is handled with CSS position:sticky (see .check-col/.name-col),
+  // which — unlike a JS translateX — does not inflate the scroll width.
   return canvas;
 }
 

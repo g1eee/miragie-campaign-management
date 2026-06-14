@@ -478,19 +478,20 @@ input, textarea, select {
 }
 .cell.check-col { justify-content: center; }
 
-/* Freeze pane: checkbox + Item (name) columns are kept in place via JS transform
-   (sticky-on-grid is unreliable across browsers). They need to paint above the
-   scrolling cells with an opaque background. */
+/* Freeze pane: checkbox + Item (name) columns pinned with position:sticky.
+   Sticky (unlike a JS translateX) does not inflate the horizontal scroll width. */
 .board-canvas .cell.check-col,
-.board-canvas .cell.name-col { position: relative; z-index: 2; background: inherit; will-change: transform; }
+.board-canvas .cell.name-col { position: sticky; z-index: 2; background: inherit; }
+.board-canvas .cell.check-col { left: 0; }
+.board-canvas .cell.name-col { left: 36px; }
 /* extend the frozen checkbox cell left to cover the canvas's left gap (no bleed);
    group color bar sits at the card edge, checkbox/content align with the header */
 .board-canvas .cell.check-col { margin-left: -16px; padding-left: 16px; border-left: 4px solid var(--gcolor, #579bfc); }
 .board-canvas .cell.name-col { box-shadow: 6px 0 8px -6px rgba(0, 0, 0, .14); }
 .board-canvas .head-row .cell.check-col,
 .board-canvas .head-row .cell.name-col { z-index: 4; }
-/* group title bar stays pinned too (translated by the same JS) */
-.board-canvas .group-header { position: relative; z-index: 3; background: var(--bg); width: max-content; will-change: transform; }
+/* group title bar stays pinned too */
+.board-canvas .group-header { position: sticky; left: 0; z-index: 3; background: var(--bg); width: max-content; }
 /* add-task row spans only 2 cols — no freeze edge shadow needed there */
 .board-canvas .add-task-row .cell.name-col { box-shadow: none; }
 .cell.center { justify-content: center; }
