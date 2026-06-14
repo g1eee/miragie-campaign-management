@@ -4118,7 +4118,26 @@ function galleryViewEl(board) {
 function workspaceHomeEl() {
   const w = getWorkspace();
   const root = h("div", { class: "view-root wh" });
-  root.append(h("div", { class: "wh-banner" }));
+  // ---- cover banner (per-workspace upload, falls back to cover.jpg / gradient)
+  const banner = h("div", { class: "wh-banner" });
+  if (w.cover) banner.style.backgroundImage = `url("${w.cover}")`;
+  const coverIn = h("input", { type: "file", accept: "image/*", style: "display:none" });
+  coverIn.addEventListener("change", () => {
+    const f = coverIn.files[0]; if (!f) return;
+    scaleImageWide(f, 1600, (url) => { w.cover = url; save(); render(); toast("Cover updated"); });
+    coverIn.value = "";
+  });
+  const coverBtn = h("button", { class: "wh-cover-edit", title: "Change cover" }, ico("camera", 15), h("span", {}, "Edit cover"));
+  coverBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (w.cover) openDropdown(coverBtn, (el, close) => {
+      el.append(ddItem("camera", "Replace cover", () => { close(); coverIn.click(); }));
+      el.append(ddItem("trash", "Remove cover", () => { close(); w.cover = null; save(); render(); toast("Cover removed"); }, "danger"));
+    }, { alignRight: true, minWidth: 180 });
+    else coverIn.click();
+  });
+  banner.append(coverBtn, coverIn);
+  root.append(banner);
   // hero portrait mirrors the current user's profile character; updates when you change it
   const heroOn = !!(me().avatar || WH_HERO);
   if (heroOn) {
