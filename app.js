@@ -231,6 +231,8 @@ const ui = {
   homeTab: "content",    // recents | content | collaborators | permissions
   whSel: new Set(),      // selected asset (board) ids in content tab
   whArchived: false,     // content tab showing archived assets
+  whF: { modified: null, types: new Set(), creators: new Set(), membership: null, cleanup: false }, // content filter panel
+  whFCreatorQ: "",       // "created by" search text in the filter panel
   authResolved: false,   // cloud session checked at least once (gate: loading vs form)
   noAccess: false,       // signed in but not on the team allow-list
   wfSel: null,           // selected workflow node id ("trigger" | stepId)
@@ -1341,6 +1343,7 @@ function renderTopbar() {
   bell.replaceChildren(ico("bell", 17));
   const meBtn = q("#me-btn");
   meBtn.replaceChildren(avatarEl(me(), 30));
+  renderGreeting();
 }
 
 function avatarEl(person, size = 26) {
@@ -3181,6 +3184,106 @@ function boardModified(board) {
   return max || Date.now();
 }
 
+/* ---- Workspace "Content" filter panel ---- */
+const WH_MOD_OPTS = [["m1", "1+ months ago", 30], ["m3", "3+ months ago", 90], ["m6", "6+ months ago", 180], ["y1", "1+ years ago", 365], ["y2", "2+ years ago", 730]];
+const WH_TYPE_OPTS = [["board", "Board", "table"], ["dashboard", "Dashboard", "dashboard"], ["doc", "Doc", "doc"], ["workflow", "Workflow", "workflow"]];
+const DAY_MS = 86400000;
+
+function whFilterCount() {
+  const f = ui.whF;
+  return (f.modified ? 1 : 0) + f.types.size + f.creators.size + (f.membership ? 1 : 0) + (f.cleanup ? 1 : 0);
+}
+
+function whMatch(b) {
+  const f = ui.whF;
+  if (f.modified) {
+    const days = (WH_MOD_OPTS.find(o => o[0] === f.modified) || [])[2] || 0;
+    if (boardModified(b) > Date.now() - days * DAY_MS) return false;
+  }
+  if (f.types.size && !f.types.has(b.kind || "board")) return false;
+  if (f.creators.size && !f.creators.has(b.creator)) return false;
+  if (f.membership) {
+    const owner = b.creator === state.user;
+    if (f.membership === "owner" && !owner) return false;
+    if (f.membership === "member" && owner) return false;
+  }
+  if (f.cleanup && boardModified(b) > Date.now() - 180 * DAY_MS) return false;
+  return true;
+}
+
+function whFilterPanel(anchor, redraw) {
+  const f = ui.whF;
+  openDropdown(anchor, (el, close) => {
+    el.classList.add("wh-filter-pop");
+    el.append(h("div", { class: "wh-filter-head" },
+      h("b", {}, "Filter by"),
+      h("button", { class: "wh-filter-clear", onclick: () => { f.modified = null; f.types.clear(); f.creators.clear(); f.membership = null; f.cleanup = false; ui.whFCreatorQ = ""; redraw(); refreshDd(); } }, "Clear all")));
+
+    const cols = h("div", { class: "wh-filter-cols" });
+
+    // Last modified (single select)
+    const c1 = h("div", { class: "wh-filter-col" }, h("div", { class: "wh-filter-label" }, "Last modified"));
+    for (const [id, label] of WH_MOD_OPTS) {
+      const chip = h("button", { class: "wh-filter-chip" + (f.modified === id ? " sel" : "") }, label);
+      chip.addEventListener("click", () => { f.modified = f.modified === id ? null : id; redraw(); refreshDd(); });
+      c1.append(chip);
+    }
+    cols.append(c1);
+
+    // Asset type (multi)
+    const c2 = h("div", { class: "wh-filter-col" }, h("div", { class: "wh-filter-label" }, "Asset type"));
+    for (const [id, label, icon] of WH_TYPE_OPTS) {
+      const chip = h("button", { class: "wh-filter-chip" + (f.types.has(id) ? " sel" : "") }, ico(icon, 14), h("span", {}, label));
+      chip.addEventListener("click", () => { f.types.has(id) ? f.types.delete(id) : f.types.add(id); redraw(); refreshDd(); });
+      c2.append(chip);
+    }
+    cols.append(c2);
+
+    // Created by (multi, searchable)
+    const c3 = h("div", { class: "wh-filter-col" }, h("div", { class: "wh-filter-label" }, "Created by"));
+    const cSearch = h("input", { class: "wh-filter-search", type: "text", placeholder: "Search", value: ui.whFCreatorQ || "" });
+    const cList = h("div", { class: "wh-filter-people" });
+    const drawPeople = () => {
+      cList.replaceChildren();
+      const qv = (ui.whFCreatorQ || "").toLowerCase();
+      const people = [...new Set(wsBoards().map(b => b.creator))].map(id => personById(id)).filter(Boolean).filter(p => p.name.toLowerCase().includes(qv));
+      if (!people.length) { cList.append(h("div", { class: "muted", style: "font-size:12px;padding:6px 2px" }, "No people")); return; }
+      for (const p of people) {
+        const n = wsBoards().filter(b => b.creator === p.id).length;
+        const it = h("button", { class: "wh-filter-person" + (f.creators.has(p.id) ? " sel" : "") },
+          avatarEl(p, 22), h("span", { style: "flex:1;text-align:left" }, p.name.split(" ")[0]), h("span", { class: "muted" }, n));
+        it.addEventListener("click", () => { f.creators.has(p.id) ? f.creators.delete(p.id) : f.creators.add(p.id); redraw(); refreshDd(); });
+        cList.append(it);
+      }
+    };
+    cSearch.addEventListener("input", () => { ui.whFCreatorQ = cSearch.value; drawPeople(); });
+    c3.append(cSearch, cList);
+    drawPeople();
+    cols.append(c3);
+
+    // Membership (single select)
+    const c4 = h("div", { class: "wh-filter-col" }, h("div", { class: "wh-filter-label" }, "Membership"));
+    for (const [id, label] of [["owner", "Owner"], ["member", "Member"]]) {
+      const chip = h("button", { class: "wh-filter-chip" + (f.membership === id ? " sel" : "") }, label);
+      chip.addEventListener("click", () => { f.membership = f.membership === id ? null : id; redraw(); refreshDd(); });
+      c4.append(chip);
+    }
+    cols.append(c4);
+
+    el.append(cols);
+
+    // footer: cleanup suggestions + toggle
+    const stale = wsBoards().filter(b => boardModified(b) <= Date.now() - 180 * DAY_MS).length;
+    const foot = h("div", { class: "wh-filter-foot" });
+    foot.append(h("span", { class: "wh-filter-cleanmsg" }, ico(stale ? "vibe" : "check", 14),
+      h("span", {}, stale ? (stale + " cleanup suggestion" + (stale > 1 ? "s" : "") + " found") : "No cleanup suggestions found")));
+    const tgl = h("button", { class: "wh-toggle" + (f.cleanup ? " on" : ""), title: "Cleanup mode" }, h("span", { class: "wh-toggle-knob" }));
+    tgl.addEventListener("click", () => { f.cleanup = !f.cleanup; redraw(); refreshDd(); });
+    foot.append(h("div", { class: "wh-toggle-wrap" }, ico("vibe", 14), h("span", {}, "Cleanup mode"), tgl));
+    el.append(foot);
+  }, { minWidth: 720, alignRight: true });
+}
+
 function statusRows(tasks) {
   return STATUSES.map(s => ({ label: s.label, n: tasks.filter(t => t.status === s.id).length, color: s.color }));
 }
@@ -3957,8 +4060,15 @@ function whContent() {
   const si = h("input", { type: "text", placeholder: "Search" });
   si.addEventListener("input", () => { filter = si.value.toLowerCase(); drawTable(); });
   searchWrap.append(ico("search", 15), si);
-  const filterBtn = h("button", { class: "tb-btn", onclick: () => toast("Filters — coming soon in demo") });
-  filterBtn.append(ico("filterFunnel", 15), h("span", {}, "Filters"));
+  const filterBtn = h("button", { class: "tb-btn" });
+  const paintFilterBtn = () => {
+    const n = whFilterCount();
+    filterBtn.replaceChildren(ico("filterFunnel", 15), h("span", {}, "Filters"));
+    filterBtn.classList.toggle("active", !!n);
+    if (n) filterBtn.append(h("span", { class: "count-badge" }, n));
+  };
+  paintFilterBtn();
+  filterBtn.addEventListener("click", () => whFilterPanel(filterBtn, () => { drawTable(); paintFilterBtn(); }));
   const archBtn = h("button", { class: "tb-btn" + (ui.whArchived ? " active" : "") });
   archBtn.append(ico("archive", 15), h("span", {}, ui.whArchived ? "Active" : "Archived"));
   archBtn.addEventListener("click", () => { ui.whArchived = !ui.whArchived; ui.whSel.clear(); renderMain(); });
@@ -3987,6 +4097,7 @@ function whContent() {
   const currentBoards = () => {
     let boards = wsBoards().filter(b => !!b.archived === !!ui.whArchived);
     if (filter) boards = boards.filter(b => b.name.toLowerCase().includes(filter));
+    boards = boards.filter(whMatch);
     return boards;
   };
 
@@ -5093,13 +5204,25 @@ function wireTopbar() {
 
   q("#me-btn").addEventListener("click", (e) => profileMenu(e.currentTarget));
 
-  const gs = q("#global-search");
-  gs.addEventListener("input", () => {
-    ui.search = gs.value;
-    rerenderViewOnly(getBoard());
-    const bs = q("#board-search");
-    if (bs && bs.value !== ui.search) bs.value = ui.search;
-  });
+  renderGreeting();
+}
+
+// time-of-day greeting in the top bar (replaces the old global search)
+function greetingText() {
+  const hr = new Date().getHours();
+  if (hr < 11) return "Selamat pagi";
+  if (hr < 15) return "Selamat siang";
+  if (hr < 18) return "Selamat sore";
+  return "Selamat malam";
+}
+
+function renderGreeting() {
+  const el = q("#tb-greeting");
+  if (!el) return;
+  const first = (me() && me().name) ? me().name.split(" ")[0] : "";
+  el.replaceChildren(
+    h("span", { class: "tb-greet-text" }, greetingText() + (first ? ", " + first : "")),
+    h("span", { class: "tb-greet-wave" }, "👋"));
 }
 
 /* ---------------- Init ---------------- */
