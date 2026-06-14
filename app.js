@@ -452,7 +452,7 @@ const COLUMN_TYPES = [
   { type: "files",    name: "Files",       icon: "paperclip",color: "#ff158a", cat: "Super useful", desc: "Attach files" },
   { type: "checkbox", name: "Checkbox",    icon: "checkbox", color: "#00c875", cat: "Super useful", desc: "Mark done / not done" },
   { type: "doc",      name: "monday Doc",  icon: "doc",      color: "#0086c0", cat: "Super useful", desc: "Write a longer note" },
-  { type: "formula",  name: "Formula",     icon: "formula",  color: "#66ccff", cat: "Super useful", desc: "Calculate across number columns" },
+  { type: "lastupdate", name: "Last updated", icon: "clock",  color: "#66ccff", cat: "Super useful", desc: "Show when the item was last updated" },
   { type: "connect",  name: "Connect boards", icon: "link",  color: "#a25ddc", cat: "Super useful", desc: "Link an item from another board" },
   { type: "extract",  name: "Extract info",icon: "vibe",     color: "#ff642e", cat: "Super useful", desc: "AI-extract data (demo)" },
   { type: "timeline", name: "Timeline",    icon: "gantt",    color: "#037f4c", cat: "Super useful", desc: "Set a start–end date range" },
@@ -1964,17 +1964,48 @@ function hidePanel(anchor, board) {
 
 /* ---------------- Render: table view ---------------- */
 
+// Unified, reorderable column list (everything after the fixed name column).
+// Order lives in board.colOrder (sys ids + custom col ids); name column is always first and is NOT in it.
+function orderedCols(board) {
+  const sysMap = {}; for (const c of COLUMNS) sysMap[c.id] = c;
+  const customMap = {}; for (const c of board.columns) customMap[c.id] = c;
+  const known = new Set([...Object.keys(sysMap), ...Object.keys(customMap)]);
+  let order = Array.isArray(board.colOrder) ? board.colOrder.filter(id => known.has(id)) : [];
+  if (!order.length) order = [...COLUMNS.map(c => c.id), ...board.columns.map(c => c.id)];
+  for (const c of COLUMNS) if (!order.includes(c.id)) order.push(c.id);
+  for (const c of board.columns) if (!order.includes(c.id)) order.push(c.id);
+  board.colOrder = order;
+  const out = [];
+  for (const id of order) {
+    if (sysMap[id]) { if (!board.hidden.includes(id)) out.push({ kind: "sys", id, w: sysMap[id].w, sys: sysMap[id] }); }
+    else if (customMap[id]) out.push({ kind: "custom", id, w: customMap[id].width || 150, col: customMap[id] });
+  }
+  return out;
+}
+
+// Rule: a Text content column is locked (cannot be dragged). Everything else can reorder.
+const colReorderable = (oc) => oc.kind === "custom" ? oc.col.type !== "text" : true;
+
+function moveColOrder(board, fromId, toId, after) {
+  if (fromId === toId) return;
+  orderedCols(board); // ensure board.colOrder exists
+  const order = board.colOrder;
+  const fi = order.indexOf(fromId); if (fi < 0) return;
+  order.splice(fi, 1);
+  let ti = order.indexOf(toId); if (ti < 0) { order.splice(fi, 0, fromId); return; }
+  if (after) ti++;
+  order.splice(ti, 0, fromId);
+  save(); render();
+}
+
 function gridTemplate(board) {
-  const cols = COLUMNS.filter(c => !board.hidden.includes(c.id));
-  const custom = board.columns.map(c => (c.width || 150) + "px").join(" ");
-  return `36px minmax(280px, 1fr) ${cols.map(c => c.w + "px").join(" ")} ${custom} 40px`.replace(/\s+/g, " ").trim();
+  const oc = orderedCols(board);
+  return `36px minmax(280px, 1fr) ${oc.map(c => c.w + "px").join(" ")} 40px`.replace(/\s+/g, " ").trim();
 }
 
 // Total intrinsic width so the canvas scrolls horizontally instead of clipping columns.
 function gridMinWidth(board) {
-  const sys = COLUMNS.filter(c => !board.hidden.includes(c.id)).reduce((a, c) => a + c.w, 0);
-  const custom = board.columns.reduce((a, c) => a + (c.width || 150), 0);
-  return 36 + 280 + sys + custom + 40;
+  return 36 + 280 + orderedCols(board).reduce((a, c) => a + c.w, 0) + 40;
 }
 
 function tableViewEl(board) {
@@ -2060,8 +2091,7 @@ function groupEl(board, group) {
   });
   headRow.append(h("div", { class: "cell check-col" }, headCb));
   headRow.append(nameColHeaderEl(board));
-  for (const c of cols) headRow.append(sysColHeaderEl(board, c));
-  for (const col of board.columns) headRow.append(colHeaderEl(board, col));
+  for (const oc of orderedCols(board)) headRow.append(colHeaderUnifiedEl(board, oc));
   const addCol = h("div", { class: "cell add-col", title: "Add column" }, ico("plus", 14));
   addCol.addEventListener("click", () => addColumnMenu(addCol, board, board.columns.length));
   headRow.append(addCol);
@@ -2091,17 +2121,17 @@ function groupEl(board, group) {
   if (group.tasks.length) {
     const sum = h("div", { class: "g-row summary-row", style: `grid-template-columns:${tpl}` });
     sum.append(h("div", { class: "cell check-col" }), h("div", { class: "cell name-col" }));
-    for (const c of cols) {
+    for (const oc of orderedCols(board)) {
       const cell = h("div", { class: "cell" });
-      if (c.id === "status") cell.append(batteryEl(tasks, "status"));
-      else if (c.id === "priority") cell.append(batteryEl(tasks, "priority"));
-      else if (c.id === "date") cell.append(rangePillEl(tasks));
-      sum.append(cell);
-    }
-    for (const col of board.columns) {
-      const cell = h("div", { class: "cell" });
-      if (col.type === "numbers") { const total = tasks.reduce((a, t) => a + (Number(t.cells[col.id]) || 0), 0); cell.append(h("span", { style: "font-weight:700" }, total ? String(Math.round(total * 100) / 100) : "")); }
-      else if (LABEL_TYPES.includes(col.type)) cell.append(colBatteryEl(tasks, col));
+      if (oc.kind === "sys") {
+        if (oc.id === "status") cell.append(batteryEl(tasks, "status"));
+        else if (oc.id === "priority") cell.append(batteryEl(tasks, "priority"));
+        else if (oc.id === "date") cell.append(rangePillEl(tasks));
+      } else {
+        const col = oc.col;
+        if (col.type === "numbers") { const total = tasks.reduce((a, t) => a + (Number(t.cells[col.id]) || 0), 0); cell.append(h("span", { style: "font-weight:700" }, total ? String(Math.round(total * 100) / 100) : "")); }
+        else if (LABEL_TYPES.includes(col.type)) cell.append(colBatteryEl(tasks, col));
+      }
       sum.append(cell);
     }
     sum.append(h("div", { class: "cell", style: "border-left:none" }));
@@ -2226,18 +2256,34 @@ function applyColConditionals(board, task, col, n) {
 }
 
 function colHeaderEl(board, col) {
-  const cell = h("div", { class: "cell col-head-cell col-drag", draggable: "true", style: "justify-content:space-between;gap:4px;cursor:grab" });
-  cell.append(h("span", { class: "col-name", title: "Drag to reorder · " + col.name, style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, col.name));
+  const cell = h("div", { class: "cell col-head-cell", style: "justify-content:space-between;gap:4px;cursor:default" });
+  cell.append(h("span", { class: "col-name", title: col.name, style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, col.name));
   const menu = h("button", { class: "col-menu-btn", title: "Column options" });
   menu.append(ico("dots", 13));
   menu.addEventListener("click", (e) => { e.stopPropagation(); colMenu(menu, board, col); });
   cell.append(menu);
+  return cell;
+}
 
-  // drag-to-reorder custom columns
-  cell.addEventListener("dragstart", (e) => { ui.colDrag = { boardId: board.id, colId: col.id }; e.dataTransfer.effectAllowed = "move"; cell.classList.add("col-dragging"); });
-  cell.addEventListener("dragend", () => { ui.colDrag = null; document.querySelectorAll(".col-drop-left,.col-drop-right,.col-dragging").forEach(x => x.classList.remove("col-drop-left", "col-drop-right", "col-dragging")); });
+// header for any reorderable column (sys or custom), wired for drag-to-reorder
+function colHeaderUnifiedEl(board, oc) {
+  const cell = oc.kind === "sys" ? sysColHeaderEl(board, oc.sys) : colHeaderEl(board, oc.col);
+  attachColDrag(cell, board, oc.id, colReorderable(oc));
+  return cell;
+}
+
+// canDrag=false → not grabbable (locked Text col) but still a valid drop target
+function attachColDrag(cell, board, id, canDrag) {
+  cell.classList.add("col-drag");
+  if (canDrag) {
+    cell.setAttribute("draggable", "true");
+    cell.style.cursor = "grab";
+    cell.title = "Drag to reorder";
+    cell.addEventListener("dragstart", (e) => { ui.colDrag = { boardId: board.id, id }; e.dataTransfer.effectAllowed = "move"; cell.classList.add("col-dragging"); });
+    cell.addEventListener("dragend", () => { ui.colDrag = null; document.querySelectorAll(".col-drop-left,.col-drop-right,.col-dragging").forEach(x => x.classList.remove("col-drop-left", "col-drop-right", "col-dragging")); });
+  }
   cell.addEventListener("dragover", (e) => {
-    if (!ui.colDrag || ui.colDrag.boardId !== board.id || ui.colDrag.colId === col.id) return;
+    if (!ui.colDrag || ui.colDrag.boardId !== board.id || ui.colDrag.id === id) return;
     e.preventDefault();
     const r = cell.getBoundingClientRect();
     const after = e.clientX > r.left + r.width / 2;
@@ -2248,26 +2294,25 @@ function colHeaderEl(board, col) {
   cell.addEventListener("drop", (e) => {
     if (!ui.colDrag || ui.colDrag.boardId !== board.id) return;
     e.preventDefault();
+    cell.classList.remove("col-drop-left", "col-drop-right");
     const r = cell.getBoundingClientRect();
     const after = e.clientX > r.left + r.width / 2;
-    const fromId = ui.colDrag.colId;
+    const fromId = ui.colDrag.id;
     ui.colDrag = null;
-    moveColumn(board, fromId, col.id, after);
+    moveColOrder(board, fromId, id, after);
   });
-  return cell;
 }
 
-function moveColumn(board, fromId, toId, after) {
-  if (fromId === toId) return;
-  const from = board.columns.findIndex(c => c.id === fromId);
-  if (from < 0) return;
-  const [moved] = board.columns.splice(from, 1);
-  let to = board.columns.findIndex(c => c.id === toId);
-  if (to < 0) { board.columns.splice(from, 0, moved); return; }
-  if (after) to++;
-  board.columns.splice(to, 0, moved);
-  save();
-  render();
+// system column cell by id (used in unified row render)
+function sysCellEl(task, id) {
+  switch (id) {
+    case "owner": return ownerCellEl(task);
+    case "status": return statusCellEl(task);
+    case "date": return dateCellEl(task);
+    case "priority": return priorityCellEl(task);
+    case "updated": return updatedCellEl(task);
+  }
+  return h("div", { class: "cell" });
 }
 
 const colLabel = (board, c) => (board.colNames && board.colNames[c.id]) || c.label;
@@ -2489,10 +2534,13 @@ function addColumnMenu(anchor, board, index) {
 
 function addColumn(board, type, index) {
   const col = mkColumn(type);
-  // Rule: a Text column defaults to the first custom-column slot; others append/insert where asked.
-  if (type === "text") board.columns.unshift(col);
-  else if (index == null || index < 0 || index > board.columns.length) board.columns.push(col);
-  else board.columns.splice(index, 0, col);
+  board.columns.push(col);
+  orderedCols(board); // ensure board.colOrder exists & includes the new id (appended at end)
+  if (type === "text") {
+    // Rule: a Text content column is locked as the first content column.
+    board.colOrder = board.colOrder.filter(id => id !== col.id);
+    board.colOrder.unshift(col.id);
+  }
   save();
   render();
   toast(`${colTypeMeta(type).name} column added`);
@@ -2500,6 +2548,7 @@ function addColumn(board, type, index) {
 
 function deleteColumn(board, col) {
   board.columns = board.columns.filter(c => c !== col);
+  if (Array.isArray(board.colOrder)) board.colOrder = board.colOrder.filter(id => id !== col.id);
   for (const g of board.groups) for (const t of g.tasks) delete t.cells[col.id];
   save();
   render();
@@ -2523,6 +2572,7 @@ function cellEditorEl(board, task, col) {
     case "doc": return docCellEl(task, col);
     case "numbers": return numberCellEl(task, col);
     case "formula": return formulaCellEl(board, task, col);
+    case "lastupdate": return updatedCellEl(task);
     case "date": return colDateCellEl(task, col);
     case "timeline": return colTimelineCellEl(task, col);
     case "people": return colPeopleCellEl(task, col);
@@ -2890,15 +2940,11 @@ function taskRowEl(board, group, task, tpl, cols) {
   nameCell.append(h("span", { class: "row-actions" }, openBtn, rowMenuBtn));
   row.append(nameCell);
 
-  // dynamic cells
-  for (const c of cols) {
-    if (c.id === "owner") row.append(ownerCellEl(task));
-    else if (c.id === "status") row.append(statusCellEl(task));
-    else if (c.id === "date") row.append(dateCellEl(task));
-    else if (c.id === "priority") row.append(priorityCellEl(task));
-    else if (c.id === "updated") row.append(updatedCellEl(task));
+  // dynamic cells (unified order)
+  for (const oc of orderedCols(board)) {
+    if (oc.kind === "sys") row.append(sysCellEl(task, oc.id));
+    else row.append(cellEditorEl(board, task, oc.col));
   }
-  for (const col of board.columns) row.append(cellEditorEl(board, task, col));
 
   row.append(h("div", { class: "cell" }));
 
@@ -5170,7 +5216,7 @@ function richEditor(onPost) {
     btn(ico("numbers", 15), "insertOrderedList", "Numbered list"),
     linkBtn);
 
-  const fmtBtn = h("button", { class: "rich-act", title: "Formatting" }, ico("pencil", 16));
+  const fmtBtn = h("button", { class: "rich-act rich-fmt", title: "Formatting" }, ico("pencil", 16));
   fmtBtn.addEventListener("mousedown", (e) => e.preventDefault());
   fmtBtn.addEventListener("click", () => { const hide = toolbar.classList.toggle("hidden"); fmtBtn.classList.toggle("on", !hide); card.classList.add("active"); });
 
