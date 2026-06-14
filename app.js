@@ -2228,6 +2228,7 @@ function groupEl(board, group) {
       } else {
         const col = oc.col;
         if (col.type === "numbers") { const total = tasks.reduce((a, t) => a + (Number(t.cells[col.id]) || 0), 0); cell.append(h("span", { style: "font-weight:700" }, total ? String(Math.round(total * 100) / 100) : "")); }
+        else if (col.type === "checkbox") { const done = tasks.filter(t => !!t.cells[col.id]).length; cell.append(h("span", { class: "sum-check" + (tasks.length && done === tasks.length ? " all" : "") }, `${done}/${tasks.length}`)); }
         else if (LABEL_TYPES.includes(col.type)) cell.append(colBatteryEl(tasks, col));
       }
       sum.append(cell);

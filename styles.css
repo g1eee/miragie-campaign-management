@@ -918,6 +918,8 @@ input, textarea, select {
   display: inline-flex; align-items: center; justify-content: center; color: #fff;
 }
 .cb-cell.on { background: #00c875; border-color: #00c875; }
+.sum-check { font-weight: 700; font-size: 13px; color: var(--text-2); }
+.sum-check.all { color: #00c875; }
 .file-cell, .connect-cell { gap: 6px; cursor: pointer; }
 .file-cell:hover, .connect-cell:hover { background: var(--surface-2); }
 .file-strip { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; overflow: hidden; }
