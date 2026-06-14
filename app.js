@@ -2912,14 +2912,25 @@ function docEditor(task, col, entry) {
       h("span", { class: "doc-sep" }),
       tbtn("―", "Divider", insertDivider),
       tbtn(ico("gallery", 16), "Image", () => imgIn.click()),
-      tbtn(ico("link", 16), "Link", () => { let u = prompt("Link URL"); if (u) cmd("createLink", /^https?:/.test(u) ? u : "https://" + u); }),
+      tbtn(ico("link", 16), "Link", () => {
+        let u = prompt("Link URL"); if (!u) return;
+        u = /^https?:/.test(u) ? u : "https://" + u;
+        const sel = window.getSelection();
+        if (sel && sel.toString().trim()) cmd("createLink", u);
+        else cmd("insertHTML", `<a href="${u}">${u}</a>&nbsp;`);
+        area.querySelectorAll("a[href]").forEach(a => { a.target = "_blank"; a.rel = "noopener"; });
+        persist();
+      }),
     );
     card.append(tb, area, imgIn);
 
-    // toggle checklist items + autosave
+    // click a link → open it (contenteditable otherwise just places the caret); toggle checklist
     area.addEventListener("click", (e) => {
+      const a = e.target.closest && e.target.closest("a[href]");
+      if (a) { e.preventDefault(); window.open(a.href, "_blank", "noopener"); return; }
       if (e.target && e.target.type === "checkbox") { e.target.toggleAttribute("checked"); persist(); }
     });
+    area.title = "Tip: click a link to open it";
     let t = 0;
     area.addEventListener("input", () => { clearTimeout(t); t = setTimeout(persist, 500); });
     titleIn.addEventListener("input", () => { clearTimeout(t); t = setTimeout(persist, 500); });

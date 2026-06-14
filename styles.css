@@ -566,6 +566,8 @@ input, textarea, select {
 .doc-area hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .doc-area ul, .doc-area ol { padding-left: 26px; margin: 6px 0; }
 .doc-area img { max-width: 100%; border-radius: 8px; }
+.doc-area a { color: var(--primary); text-decoration: underline; cursor: pointer; }
+.doc-area a:hover { opacity: .8; }
 .doc-todo { display: flex; align-items: flex-start; gap: 8px; margin: 4px 0; }
 .doc-todo input { margin-top: 4px; }
 .doc-todo input:checked + span { text-decoration: line-through; color: var(--text-2); }
