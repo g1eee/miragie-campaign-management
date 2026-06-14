@@ -2796,7 +2796,8 @@ function colTimelineCellEl(task, col) {
 // file entries are objects {name, url?, kind?} (legacy plain strings still supported)
 const fileName = (f) => typeof f === "string" ? f : (f && f.name) || "file";
 const fileUrl = (f) => (f && typeof f === "object") ? f.url : null;
-const fileIsImg = (f) => (f && f.kind === "image") || (() => { const u = fileUrl(f); return !!u && (u.startsWith("data:image") || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(u)); })();
+const IMG_EXT_RE = /\.(png|jpe?g|jfif|pjpeg|gif|webp|svg|bmp|avif|heic|heif)$/i;
+const fileIsImg = (f) => (f && f.kind === "image") || (() => { const u = fileUrl(f); return !!u && (u.startsWith("data:image") || IMG_EXT_RE.test(u)); })() || (typeof f === "object" && f && IMG_EXT_RE.test(fileName(f)));
 
 // small inline thumbnail/icon for a file entry
 function fileThumb(f) {
@@ -2861,7 +2862,8 @@ function colFilesCellEl(task, col) {
     fileIn.addEventListener("change", () => {
       const f = fileIn.files[0];
       if (f) {
-        if (f.type.startsWith("image/")) scaleImageWide(f, 600, (url) => { add({ name: f.name, url, kind: "image" }); draw(); });
+        const isImg = (f.type && f.type.startsWith("image/")) || IMG_EXT_RE.test(f.name);
+        if (isImg) scaleImageWide(f, 600, (url) => { add({ name: f.name, url, kind: "image" }); draw(); });
         else { add({ name: f.name, kind: "file" }); draw(); }
       }
       fileIn.value = "";
