@@ -5286,59 +5286,8 @@ function renderPanel() {
     h("span", { class: "muted", style: "font-size:12px" }, "in "),
     h("b", { style: `color:${group.color};font-size:12px` }, group.name)));
 
-  // fields
-  const fields = h("div", { class: "ip-fields" });
-
-  const s = statusOf(task);
-  const statusPill = h("button", { class: "ip-pill", style: `background:${s.color}` }, s.label);
-  statusPill.addEventListener("click", () => statusPicker(statusPill, task.id));
-  fields.append(h("span", { class: "ip-label" }, "Status"), statusPill);
-
-  const p = prioOf(task);
-  const prioPill = h("button", { class: "ip-pill", style: `background:${p.color}` }, p.label || "—");
-  prioPill.addEventListener("click", () => priorityPicker(prioPill, task.id));
-  fields.append(h("span", { class: "ip-label" }, "Priority"), prioPill);
-
-  const ownerBtn = h("button", { class: "ip-plain" });
-  const owners = task.owners.map(personById).filter(Boolean);
-  if (owners.length) {
-    const stack = h("span", { class: "avatar-stack" });
-    owners.slice(0, 3).forEach(x => stack.append(avatarEl(x, 22)));
-    ownerBtn.append(stack, h("span", {}, owners.map(x => x.name.split(" ")[0]).join(", ")));
-  } else {
-    ownerBtn.append(ico("personPlus", 15), h("span", { class: "muted" }, "Assign"));
-  }
-  ownerBtn.addEventListener("click", () => ownerPicker(ownerBtn, task.id));
-  fields.append(h("span", { class: "ip-label" }, "Owner"), ownerBtn);
-
-  const dateBtn = h("button", { class: "ip-plain" });
-  dateBtn.append(ico("calendar", 15), h("span", { class: task.due ? "" : "muted" }, task.due ? fmtDate(task.due) : "Set date"));
-  dateBtn.addEventListener("click", () => datePicker(dateBtn, task.id));
-  fields.append(h("span", { class: "ip-label" }, "Due date"), dateBtn);
-
-  fields.append(h("span", { class: "ip-label" }, "Last updated"),
-    h("span", { class: "muted", style: "font-size:13px" }, `${relTime(task.updatedAt)} by ${personById(task.updatedBy)?.name || "?"}`));
-
-  // custom columns
-  if (board.columns.length) {
-    const cf = h("div", { class: "ip-fields" });
-    for (const col of board.columns) {
-      cf.append(h("span", { class: "ip-label" }, col.name), h("div", { class: "ip-cellwrap" }, cellEditorEl(board, task, col)));
-    }
-    panel.append(cf);
-  }
-
-  panel.append(fields);
-
-  // description
-  const desc = h("textarea", { class: "ip-desc", placeholder: "Add a description..." });
-  desc.value = task.desc;
-  desc.addEventListener("change", () => {
-    task.desc = desc.value;
-    touch(task);
-    save();
-  });
-  panel.append(h("div", { class: "ip-section" }, h("h4", {}, "Description"), desc));
+  // Update-focused panel (monday-style): no detail fields here — Status/Priority/
+  // Owner/etc are edited in the table cells. This page is just for updates/feedback.
 
   // ---- tabbed lower area: Updates | Files | Activity Log (monday-style)
   ui.panelTab = ui.panelTab || "updates";
