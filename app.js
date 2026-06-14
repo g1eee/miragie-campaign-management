@@ -5178,7 +5178,7 @@ function richEditor(onPost) {
   };
   const actBtn = (icon, title, fn) => {
     const b = h("button", { class: "rich-act", title });
-    b.append(typeof icon === "string" ? h("span", { style: "font-weight:700;font-size:12px" }, icon) : ico(icon, 16));
+    b.append((typeof icon === "string" && !PATHS[icon]) ? h("span", { style: "font-weight:700;font-size:12px" }, icon) : ico(icon, 16));
     b.addEventListener("mousedown", (e) => e.preventDefault());
     b.addEventListener("click", fn);
     return b;
@@ -5241,7 +5241,6 @@ function richEditor(onPost) {
     h("div", { class: "rich-actions" },
       actBtn("at", "Mention", () => cmd("insertText", "@")),
       actBtn("paperclip", "Attach image", () => fileIn.click()),
-      actBtn("GIF", "Add a GIF", () => toast("GIFs — coming soon in demo")),
       actBtn("smile", "Emoji", (ev) => emojiPicker(ev.currentTarget, (em) => cmd("insertText", em))),
       fmtBtn),
     postBtn);
