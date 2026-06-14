@@ -220,6 +220,7 @@ const ui = {
   person: null,
   fStatus: new Set(),
   fPriority: new Set(),
+  fGroup: new Set(),     // quick-filter: visible group ids
   sort: null,            // {field, dir}
   sel: new Set(),
   cal: null,             // {y, m}
@@ -1195,6 +1196,7 @@ function resetBoardUi() {
   ui.person = null;
   ui.fStatus.clear();
   ui.fPriority.clear();
+  if (ui.fGroup) ui.fGroup.clear();
   ui.sort = null;
   ui.search = "";
   ui.cal = null;
@@ -1207,7 +1209,7 @@ function resetBoardUi() {
 /* ---------------- Filtering / sorting ---------------- */
 
 function filtersActive() {
-  return ui.fStatus.size + ui.fPriority.size;
+  return ui.fStatus.size + ui.fPriority.size + (ui.fGroup ? ui.fGroup.size : 0);
 }
 
 function visibleTasks(group) {
@@ -1883,42 +1885,43 @@ function newTaskIn(board, group) {
 }
 
 function filterPanel(anchor) {
+  const board = getBoard();
   openDropdown(anchor, (el, close) => {
-    el.append(h("div", { class: "dd-title" }, "Status"));
-    for (const s of STATUSES) {
-      const cb = h("input", { type: "checkbox" });
-      cb.checked = ui.fStatus.has(s.id);
-      const row = h("label", { class: "dd-check" }, cb,
-        h("span", { style: `display:inline-block;width:12px;height:12px;border-radius:3px;background:${s.color}` }),
-        h("span", {}, s.label || "—"));
-      cb.addEventListener("change", () => {
-        cb.checked ? ui.fStatus.add(s.id) : ui.fStatus.delete(s.id);
-        softRender();
-        refreshDd();
-      });
-      el.append(row);
-    }
-    el.append(h("div", { class: "dd-title" }, "Priority"));
-    for (const p of PRIORITIES) {
-      const cb = h("input", { type: "checkbox" });
-      cb.checked = ui.fPriority.has(p.id);
-      const row = h("label", { class: "dd-check" }, cb,
-        h("span", { style: `display:inline-block;width:12px;height:12px;border-radius:3px;background:${p.color}` }),
-        h("span", {}, p.label || "—"));
-      cb.addEventListener("change", () => {
-        cb.checked ? ui.fPriority.add(p.id) : ui.fPriority.delete(p.id);
-        softRender();
-        refreshDd();
-      });
-      el.append(row);
-    }
-    if (filtersActive()) {
-      el.append(h("hr", { class: "dd-sep" }), h("button", {
-        class: "dd-footer-btn",
-        onclick: () => { ui.fStatus.clear(); ui.fPriority.clear(); close(); softRender(); },
-      }, "Clear all filters"));
-    }
-  }, { minWidth: 220 });
+    el.classList.add("qf-pop");
+    const all = board.groups.flatMap(g => g.tasks);
+    const passes = (t, g) => (!ui.fGroup.size || ui.fGroup.has(g.id))
+      && (!ui.fStatus.size || ui.fStatus.has(t.status))
+      && (!ui.fPriority.size || ui.fPriority.has(t.priority))
+      && (!ui.person || t.owners.includes(ui.person))
+      && (!ui.search || t.name.toLowerCase().includes(ui.search.toLowerCase()));
+    const shown = board.groups.reduce((a, g) => a + g.tasks.filter(t => passes(t, g)).length, 0);
+
+    const head = h("div", { class: "qf-head" },
+      h("div", {}, h("b", {}, "Quick filters"),
+        h("span", { class: "muted", style: "margin-left:8px;font-size:13px" }, `Showing ${shown === all.length ? "all of " : ""}${shown} of ${all.length} items`)),
+      h("button", { class: "qf-clear", onclick: () => { ui.fGroup.clear(); ui.fStatus.clear(); ui.fPriority.clear(); softRender(); refreshDd(); } }, "Clear all"));
+    el.append(head);
+
+    const cols = h("div", { class: "qf-cols" });
+    const col = (title, items, set) => {
+      const c = h("div", { class: "qf-col" }, h("div", { class: "qf-col-title" }, title));
+      for (const it of items) {
+        const on = set.has(it.id);
+        const row = h("button", { class: "qf-row" + (on ? " sel" : "") },
+          h("span", { class: "qf-dot", style: `background:${it.color}` }),
+          h("span", { class: "qf-label" }, it.label),
+          h("span", { class: "qf-count" }, it.n));
+        row.addEventListener("click", () => { on ? set.delete(it.id) : set.add(it.id); softRender(); refreshDd(); });
+        c.append(row);
+      }
+      return c;
+    };
+
+    cols.append(col("Group", board.groups.map(g => ({ id: g.id, label: g.name, color: g.color, n: g.tasks.length })), ui.fGroup));
+    cols.append(col("Status", STATUSES.map(s => ({ id: s.id, label: s.label || "Blank", color: s.color, n: all.filter(t => t.status === s.id).length })), ui.fStatus));
+    cols.append(col("Priority", PRIORITIES.map(p => ({ id: p.id, label: p.label || "Blank", color: p.color, n: all.filter(t => t.priority === p.id).length })), ui.fPriority));
+    el.append(cols);
+  }, { minWidth: 560 });
 }
 
 function sortPanel(anchor) {
@@ -2026,6 +2029,7 @@ function tableViewEl(board) {
   }
 
   for (const group of board.groups) {
+    if (ui.fGroup.size && !ui.fGroup.has(group.id)) continue;
     wrap.append(groupEl(board, group));
   }
 
