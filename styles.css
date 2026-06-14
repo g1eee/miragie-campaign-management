@@ -85,9 +85,9 @@ input, textarea, select {
 .tb-left { display: flex; align-items: center; min-width: 220px; }
 
 .logo { display: flex; align-items: center; gap: 8px; user-select: none; color: var(--text); }
-/* wordmark — rounded font (Baloo 2), blue accent on "ag" */
-.logo-text { font-family: "Baloo 2", "Poppins", sans-serif; font-weight: 600; font-size: 23px; letter-spacing: .3px; color: var(--text); line-height: 1; }
-.logo-text .lg-accent { color: #9bbcf2; }
+/* soft-blue logo mark + rounded wordmark (Fredoka) */
+.logo-mark { width: 28px; height: 28px; border-radius: 9px; background: linear-gradient(135deg, #b9d0f5, #9bbcf2); display: flex; align-items: center; justify-content: center; flex: none; box-shadow: 0 2px 6px rgba(155,188,242,.45); }
+.logo-text { font-family: "Fredoka", "Poppins", sans-serif; font-weight: 600; font-size: 22px; letter-spacing: .2px; color: var(--text); line-height: 1; }
 .logo-text b { font-weight: 800; }
 .logo-text em { font-style: normal; font-size: 11px; color: var(--text-2); margin-left: 4px; }
 
