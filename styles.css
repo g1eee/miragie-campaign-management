@@ -2279,3 +2279,69 @@ html.gated, html.gated body { overflow: hidden; }
 .ip-act-row:last-child { border-bottom: none; }
 .ip-act-txt { flex: 1; color: var(--text-2); }
 .ip-act-row time { color: var(--text-2); font-size: 11px; }
+
+/* ============================================================
+   Clean / minimal SaaS skin (soft lavender, floating rounded panels)
+   Visual only — layout structure & functions unchanged.
+   ============================================================ */
+:root {
+  --surface: #f1f2fb;
+  --surface-2: #e8eaf7;
+  --border: #e9ebf7;
+  --border-2: #dcdef0;
+  --text: #2d3052;
+  --text-2: #7e83a3;
+  --radius: 12px;
+  --shadow: 0 18px 50px rgba(70, 70, 130, 0.16);
+  --shadow-sm: 0 4px 18px rgba(70, 70, 130, 0.08);
+}
+[data-theme="dark"] {
+  --surface: #15173a;
+  --surface-2: #2a2d52;
+  --border: #3c3f63;
+  --border-2: #4b4e69;
+  --text: #d5d8df;
+  --text-2: #9699a6;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+body {
+  background: linear-gradient(135deg, #e9ecfb 0%, #eef0fb 40%, #f3eefb 75%, #fbeef6 100%);
+}
+[data-theme="dark"] body { background: linear-gradient(135deg, #14162e 0%, #141a33 50%, #1c1730 100%); }
+
+/* top bar floats over the gradient */
+#topbar { background: transparent; border-bottom: none; }
+.tb-search { border-radius: 999px; background: var(--bg); border-color: transparent; box-shadow: var(--shadow-sm); }
+.tb-search:focus-within { border-color: var(--primary); }
+
+/* sidebar + main become floating rounded cards */
+#shell { padding: 4px 14px 14px; gap: 14px; background: transparent; }
+#sidebar {
+  background: var(--bg); border-right: none; border-radius: 18px;
+  box-shadow: var(--shadow-sm); padding: 14px 12px;
+}
+#main {
+  background: var(--bg); border-radius: 18px; box-shadow: var(--shadow-sm);
+  overflow-x: hidden; overflow-y: auto;
+}
+
+/* rounded, airy controls */
+.btn-primary { border-radius: 999px; box-shadow: 0 6px 16px var(--primary-soft); }
+.btn-invite, .tb-btn { border-radius: 999px; }
+.board-search-wrap { border-radius: 999px; }
+.side-item, .ws-chip, .side-search { border-radius: 12px; }
+.side-search { background: var(--surface); }
+input, textarea, select { border-radius: 10px; }
+
+/* cards: softer + rounder */
+.g-table { border-radius: 14px; box-shadow: var(--shadow-sm); }
+.kb-card { border-radius: 14px; box-shadow: var(--shadow-sm); }
+.item-panel { top: 56px; right: 14px; bottom: 14px; border-radius: 18px; border-left: none; }
+.modal-card { border-radius: 18px; box-shadow: var(--shadow); }
+.dropdown { border-radius: 14px; box-shadow: var(--shadow); }
+.chart-card, .numbers-widget, .wh-collab-card, .wh-empty-card { border-radius: 16px; box-shadow: var(--shadow-sm); }
+
+/* workspace-home banner: soft pastel wash */
+.wh-banner { background: linear-gradient(120deg, #e7ecfb, #efe9fb 60%, #fbeaf4); }
