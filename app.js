@@ -2793,15 +2793,34 @@ function colTimelineCellEl(task, col) {
 }
 
 // --- Files: list of file names (demo) ---
-// file entries are objects {name, url?} (legacy plain strings still supported)
+// file entries are objects {name, url?, kind?} (legacy plain strings still supported)
 const fileName = (f) => typeof f === "string" ? f : (f && f.name) || "file";
 const fileUrl = (f) => (f && typeof f === "object") ? f.url : null;
+const fileIsImg = (f) => (f && f.kind === "image") || (() => { const u = fileUrl(f); return !!u && (u.startsWith("data:image") || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(u)); })();
+
+// small inline thumbnail/icon for a file entry
+function fileThumb(f) {
+  const url = fileUrl(f), name = fileName(f);
+  if (fileIsImg(f) && url) {
+    const t = h("span", { class: "file-thumb", title: name });
+    const im = h("img", { src: url, alt: name });
+    im.addEventListener("error", () => t.replaceChildren(ico("gallery", 14)));
+    t.append(im); return t;
+  }
+  if (f && f.kind === "doc") return h("span", { class: "file-thumb ft-doc", title: name }, ico("doc", 15));
+  if (url) return h("span", { class: "file-thumb ft-link", title: name }, ico("link", 14));
+  return h("span", { class: "file-thumb ft-file", title: name }, ico("paperclip", 14));
+}
 
 function colFilesCellEl(task, col) {
   const arr = Array.isArray(task.cells[col.id]) ? task.cells[col.id] : [];
   const cell = h("div", { class: "cell file-cell", title: "Manage files" });
-  if (arr.length) cell.append(ico("paperclip", 14), h("span", {}, arr.length));
-  else cell.append(h("span", { class: "muted", style: "display:flex;align-items:center;gap:4px" }, ico("paperclip", 14), "Add"));
+  if (arr.length) {
+    const strip = h("div", { class: "file-strip" });
+    arr.slice(0, 4).forEach(f => strip.append(fileThumb(f)));
+    if (arr.length > 4) strip.append(h("span", { class: "file-more" }, "+" + (arr.length - 4)));
+    cell.append(strip);
+  } else cell.append(h("span", { class: "muted", style: "display:flex;align-items:center;gap:4px" }, ico("paperclip", 14), "Add"));
 
   const add = (entry) => {
     const a = Array.isArray(task.cells[col.id]) ? [...task.cells[col.id]] : [];
@@ -2830,7 +2849,14 @@ function colFilesCellEl(task, col) {
 
     // hidden picker for "From Computer"
     const fileIn = h("input", { type: "file", style: "display:none" });
-    fileIn.addEventListener("change", () => { const f = fileIn.files[0]; if (f) { add({ name: f.name }); draw(); } fileIn.value = ""; });
+    fileIn.addEventListener("change", () => {
+      const f = fileIn.files[0];
+      if (f) {
+        if (f.type.startsWith("image/")) scaleImageWide(f, 600, (url) => { add({ name: f.name, url, kind: "image" }); draw(); });
+        else { add({ name: f.name, kind: "file" }); draw(); }
+      }
+      fileIn.value = "";
+    });
     dd.append(fileIn);
 
     const opt = (icon, label, fn) => { const it = ddItem(icon, label, fn); dd.append(it); return it; };
