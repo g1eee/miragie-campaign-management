@@ -132,6 +132,8 @@ const PATHS = {
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 7l8 6 8-6"/>',
   badge: '<path d="M12 3l2 2h3v3l2 2-2 2v3h-3l-2 2-2-2H7v-3l-2-2 2-2V5h3z"/><path d="M9.5 12l1.7 1.7L15 10"/>',
   move: '<path d="M12 3v18M3 12h18M8 7l4-4 4 4M8 17l4 4 4-4M7 8l-4 4 4 4M17 8l4 4-4 4"/>',
+  checkbox: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12l3 3 5-6"/>',
+  formula: '<path d="M14 4h-2.5a2 2 0 0 0-2 2v12a2 2 0 0 1-2 2M6 12h7"/><path d="M14 13l4 5M18 13l-4 5"/>',
 };
 
 function ico(name, size = 16) {
@@ -227,6 +229,7 @@ const ui = {
   sideCollapsed: false,
   sideSearch: "",
   drag: null,            // {type:'task'|'card'|'chip', taskId}
+  colDrag: null,         // {boardId, colId} — custom column reorder
   home: false,           // workspace home view
   homeTab: "content",    // recents | content | collaborators | permissions
   whSel: new Set(),      // selected asset (board) ids in content tab
@@ -440,14 +443,24 @@ function mkTask(name, opts = {}) {
 }
 
 const COLUMN_TYPES = [
-  { type: "status",   name: "Status",   icon: "kanban",   color: "#00c875", desc: "Track progress with colored labels" },
-  { type: "text",     name: "Text",     icon: "doc",      color: "#0086c0", desc: "Add any text" },
-  { type: "people",   name: "People",   icon: "person",   color: "#579bfc", desc: "Assign team members" },
-  { type: "dropdown", name: "Dropdown", icon: "chevDown", color: "#a25ddc", desc: "Pick one or more labels" },
-  { type: "date",     name: "Date",     icon: "calendar", color: "#5559df", desc: "Pick a date" },
-  { type: "numbers",  name: "Numbers",  icon: "numbers",  color: "#fdab3d", desc: "Track any number" },
+  { type: "text",     name: "Text",        icon: "doc",      color: "#0086c0", cat: "Essentials",  desc: "Add any text" },
+  { type: "status",   name: "Status",      icon: "kanban",   color: "#00c875", cat: "Essentials",  desc: "Track progress with colored labels" },
+  { type: "dropdown", name: "Dropdown",    icon: "chevDown", color: "#a25ddc", cat: "Essentials",  desc: "Pick one or more labels" },
+  { type: "date",     name: "Date",        icon: "calendar", color: "#5559df", cat: "Essentials",  desc: "Pick a date" },
+  { type: "people",   name: "People",      icon: "person",   color: "#579bfc", cat: "Essentials",  desc: "Assign team members" },
+  { type: "numbers",  name: "Numbers",     icon: "numbers",  color: "#fdab3d", cat: "Essentials",  desc: "Track any number" },
+  { type: "files",    name: "Files",       icon: "paperclip",color: "#ff158a", cat: "Super useful", desc: "Attach files" },
+  { type: "checkbox", name: "Checkbox",    icon: "checkbox", color: "#00c875", cat: "Super useful", desc: "Mark done / not done" },
+  { type: "doc",      name: "monday Doc",  icon: "doc",      color: "#0086c0", cat: "Super useful", desc: "Write a longer note" },
+  { type: "formula",  name: "Formula",     icon: "formula",  color: "#66ccff", cat: "Super useful", desc: "Calculate across number columns" },
+  { type: "connect",  name: "Connect boards", icon: "link",  color: "#a25ddc", cat: "Super useful", desc: "Link an item from another board" },
+  { type: "extract",  name: "Extract info",icon: "vibe",     color: "#ff642e", cat: "Super useful", desc: "AI-extract data (demo)" },
+  { type: "timeline", name: "Timeline",    icon: "gantt",    color: "#037f4c", cat: "Super useful", desc: "Set a start–end date range" },
+  { type: "priority", name: "Priority",    icon: "bolt",     color: "#401694", cat: "Super useful", desc: "Set priority labels" },
 ];
-const colTypeMeta = (type) => COLUMN_TYPES.find(c => c.type === type) || COLUMN_TYPES[1];
+const colTypeMeta = (type) => COLUMN_TYPES.find(c => c.type === type) || COLUMN_TYPES[0];
+// types that store a single chosen label id (rendered/edited like Status)
+const LABEL_TYPES = ["status", "dropdown", "priority"];
 
 const LABEL_PALETTE = ["#fdab3d", "#00c875", "#e2445c", "#579bfc", "#a25ddc", "#5559df", "#0086c0", "#ff642e", "#9d50dd", "#333333", "#ffcb00", "#c4c4c4"];
 
@@ -458,6 +471,12 @@ function defaultLabels(type) {
     { id: uid(), label: "Stuck", color: "#e2445c" },
     { id: uid(), label: "", color: "#c4c4c4" },
   ];
+  if (type === "priority") return [
+    { id: uid(), label: "Critical", color: "#333333" },
+    { id: uid(), label: "High", color: "#401694" },
+    { id: uid(), label: "Medium", color: "#5559df" },
+    { id: uid(), label: "Low", color: "#579bfc" },
+  ];
   return [
     { id: uid(), label: "Option 1", color: "#579bfc" },
     { id: uid(), label: "Option 2", color: "#a25ddc" },
@@ -466,8 +485,8 @@ function defaultLabels(type) {
 
 function mkColumn(type) {
   const meta = colTypeMeta(type);
-  const col = { id: uid(), type, name: meta.name, width: type === "text" ? 220 : 150 };
-  if (type === "status" || type === "dropdown") col.labels = defaultLabels(type);
+  const col = { id: uid(), type, name: meta.name, width: type === "text" || type === "doc" || type === "timeline" ? 220 : 150 };
+  if (LABEL_TYPES.includes(type)) col.labels = defaultLabels(type);
   return col;
 }
 
@@ -2082,7 +2101,7 @@ function groupEl(board, group) {
     for (const col of board.columns) {
       const cell = h("div", { class: "cell" });
       if (col.type === "numbers") { const total = tasks.reduce((a, t) => a + (Number(t.cells[col.id]) || 0), 0); cell.append(h("span", { style: "font-weight:700" }, total ? String(Math.round(total * 100) / 100) : "")); }
-      else if (col.type === "status" || col.type === "dropdown") cell.append(colBatteryEl(tasks, col));
+      else if (LABEL_TYPES.includes(col.type)) cell.append(colBatteryEl(tasks, col));
       sum.append(cell);
     }
     sum.append(h("div", { class: "cell", style: "border-left:none" }));
@@ -2207,13 +2226,48 @@ function applyColConditionals(board, task, col, n) {
 }
 
 function colHeaderEl(board, col) {
-  const cell = h("div", { class: "cell col-head-cell", style: "justify-content:space-between;gap:4px;cursor:default" });
-  cell.append(h("span", { class: "col-name", title: col.name, style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, col.name));
+  const cell = h("div", { class: "cell col-head-cell col-drag", draggable: "true", style: "justify-content:space-between;gap:4px;cursor:grab" });
+  cell.append(h("span", { class: "col-name", title: "Drag to reorder · " + col.name, style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, col.name));
   const menu = h("button", { class: "col-menu-btn", title: "Column options" });
   menu.append(ico("dots", 13));
   menu.addEventListener("click", (e) => { e.stopPropagation(); colMenu(menu, board, col); });
   cell.append(menu);
+
+  // drag-to-reorder custom columns
+  cell.addEventListener("dragstart", (e) => { ui.colDrag = { boardId: board.id, colId: col.id }; e.dataTransfer.effectAllowed = "move"; cell.classList.add("col-dragging"); });
+  cell.addEventListener("dragend", () => { ui.colDrag = null; document.querySelectorAll(".col-drop-left,.col-drop-right,.col-dragging").forEach(x => x.classList.remove("col-drop-left", "col-drop-right", "col-dragging")); });
+  cell.addEventListener("dragover", (e) => {
+    if (!ui.colDrag || ui.colDrag.boardId !== board.id || ui.colDrag.colId === col.id) return;
+    e.preventDefault();
+    const r = cell.getBoundingClientRect();
+    const after = e.clientX > r.left + r.width / 2;
+    cell.classList.toggle("col-drop-right", after);
+    cell.classList.toggle("col-drop-left", !after);
+  });
+  cell.addEventListener("dragleave", () => cell.classList.remove("col-drop-left", "col-drop-right"));
+  cell.addEventListener("drop", (e) => {
+    if (!ui.colDrag || ui.colDrag.boardId !== board.id) return;
+    e.preventDefault();
+    const r = cell.getBoundingClientRect();
+    const after = e.clientX > r.left + r.width / 2;
+    const fromId = ui.colDrag.colId;
+    ui.colDrag = null;
+    moveColumn(board, fromId, col.id, after);
+  });
   return cell;
+}
+
+function moveColumn(board, fromId, toId, after) {
+  if (fromId === toId) return;
+  const from = board.columns.findIndex(c => c.id === fromId);
+  if (from < 0) return;
+  const [moved] = board.columns.splice(from, 1);
+  let to = board.columns.findIndex(c => c.id === toId);
+  if (to < 0) { board.columns.splice(from, 0, moved); return; }
+  if (after) to++;
+  board.columns.splice(to, 0, moved);
+  save();
+  render();
 }
 
 const colLabel = (board, c) => (board.colNames && board.colNames[c.id]) || c.label;
@@ -2258,7 +2312,7 @@ function sysColMenu(anchor, board, c) {
 function colMenu(anchor, board, col) {
   openDropdown(anchor, (el, close) => {
     el.append(ddItem("pencil", "Rename", () => { close(); modalPrompt("Rename column", "Column name", col.name, (v) => { col.name = v; save(); render(); }); }));
-    if (col.type === "status" || col.type === "dropdown") el.append(ddItem("kanban", "Edit Labels", () => { close(); labelEditor(anchor, board, col); }));
+    if (LABEL_TYPES.includes(col.type)) el.append(ddItem("kanban", "Edit Labels", () => { close(); labelEditor(anchor, board, col); }));
     if (col.type === "numbers") {
       const has = col.validation && col.validation.type;
       const it = ddItem("gear", "Validation rules", () => { close(); columnRulesModal(board, col); });
@@ -2406,28 +2460,38 @@ function addColumnMenu(anchor, board, index) {
     const si = h("input", { type: "text", placeholder: "Search or describe your column" });
     search.append(ico("search", 14), si);
     el.append(search);
-    el.append(h("div", { class: "dd-title" }, "Essentials"));
-    const grid = h("div", { class: "addcol-grid" });
+    const host = h("div", {});
     const draw = () => {
-      grid.replaceChildren();
+      host.replaceChildren();
       const f = si.value.toLowerCase();
-      for (const t of COLUMN_TYPES) {
-        if (f && !t.name.toLowerCase().includes(f)) continue;
-        grid.append(h("div", { class: "addcol-item", onclick: () => { close(); addColumn(board, t.type, index); } },
-          h("span", { class: "addcol-ico", style: `background:${t.color}` }, ico(t.icon, 15)), h("span", {}, t.name)));
+      const cats = [...new Set(COLUMN_TYPES.map(t => t.cat))];
+      let total = 0;
+      for (const cat of cats) {
+        const items = COLUMN_TYPES.filter(t => t.cat === cat && (!f || t.name.toLowerCase().includes(f)));
+        if (!items.length) continue;
+        host.append(h("div", { class: "dd-title" }, cat));
+        const grid = h("div", { class: "addcol-grid" });
+        for (const t of items) {
+          grid.append(h("div", { class: "addcol-item", title: t.desc, onclick: () => { close(); addColumn(board, t.type, index); } },
+            h("span", { class: "addcol-ico", style: `background:${t.color}` }, ico(t.icon, 15)), h("span", {}, t.name)));
+          total++;
+        }
+        host.append(grid);
       }
-      if (!grid.children.length) grid.append(h("div", { class: "muted", style: "padding:8px" }, "No matches"));
+      if (!total) host.append(h("div", { class: "muted", style: "padding:8px" }, "No matches"));
     };
     si.addEventListener("input", draw);
     si.addEventListener("keydown", (e) => e.stopPropagation());
     draw();
-    el.append(grid);
-  }, { minWidth: 300 });
+    el.append(host);
+  }, { minWidth: 320 });
 }
 
 function addColumn(board, type, index) {
   const col = mkColumn(type);
-  if (index == null || index < 0 || index > board.columns.length) board.columns.push(col);
+  // Rule: a Text column defaults to the first custom-column slot; others append/insert where asked.
+  if (type === "text") board.columns.unshift(col);
+  else if (index == null || index < 0 || index > board.columns.length) board.columns.push(col);
   else board.columns.splice(index, 0, col);
   save();
   render();
@@ -2456,13 +2520,158 @@ function colBatteryEl(tasks, col) {
 function cellEditorEl(board, task, col) {
   switch (col.type) {
     case "text": return textCellEl(task, col);
+    case "doc": return docCellEl(task, col);
     case "numbers": return numberCellEl(task, col);
+    case "formula": return formulaCellEl(board, task, col);
     case "date": return colDateCellEl(task, col);
+    case "timeline": return colTimelineCellEl(task, col);
     case "people": return colPeopleCellEl(task, col);
-    case "status": return colStatusCellEl(board, task, col);
+    case "status": case "priority": return colStatusCellEl(board, task, col);
     case "dropdown": return colDropdownCellEl(board, task, col);
+    case "checkbox": return colCheckboxCellEl(task, col);
+    case "files": return colFilesCellEl(task, col);
+    case "connect": return colConnectCellEl(board, task, col);
+    case "extract": return colExtractCellEl(task, col);
     default: return h("div", { class: "cell" });
   }
+}
+
+// --- monday Doc: multi-line note edited in a popover ---
+function docCellEl(task, col) {
+  const v = task.cells[col.id] || "";
+  const cell = h("div", { class: "cell", title: "Click to edit note" });
+  const span = h("span", { style: "width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 4px;cursor:text;color:" + (v ? "var(--text)" : "var(--text-2)") }, v || "Add note…");
+  span.addEventListener("click", () => openDropdown(cell, (dd, close) => {
+    const ta = h("textarea", { class: "ip-desc", style: "width:280px;height:120px", placeholder: "Write a note…" });
+    ta.value = task.cells[col.id] || "";
+    const save_ = h("button", { class: "btn-primary", onclick: () => { setColVal(task, col, ta.value.trim()); close(); softRenderTable(getBoard()); } }, "Save");
+    dd.append(ta, h("div", { class: "date-pop-row", style: "margin-top:8px" }, save_));
+    setTimeout(() => ta.focus(), 0);
+  }, { minWidth: 300 }));
+  cell.append(span);
+  return cell;
+}
+
+// --- Formula: =expression over number columns by name, evaluated safely ---
+function evalFormula(board, task, expr) {
+  if (!expr) return "";
+  let e = expr.replace(/^=/, "");
+  // replace {Column Name} or bare column names with their numeric value
+  for (const c of board.columns) {
+    if (c.type !== "numbers") continue;
+    const n = Number(task.cells[c.id]) || 0;
+    e = e.split("{" + c.name + "}").join("(" + n + ")");
+  }
+  if (!/^[-+*/().\d\s]+$/.test(e)) return "⚠";
+  try { const r = Function('"use strict";return (' + e + ")")(); return Number.isFinite(r) ? String(Math.round(r * 1000) / 1000) : "⚠"; }
+  catch { return "⚠"; }
+}
+function formulaCellEl(board, task, col) {
+  const expr = task.cells[col.id] || "";
+  const cell = h("div", { class: "cell", style: "justify-content:flex-end", title: expr ? "Formula: " + expr : "Set formula (use {Column name}, e.g. {Budget}*1.1)" });
+  const out = expr ? evalFormula(board, task, expr) : "";
+  const span = h("span", { class: "num-val" + (expr ? "" : " num-hint"), style: "padding:2px 6px;cursor:text;border-radius:4px;display:flex;align-items:center;gap:4px" }, ico("formula", 12), h("span", {}, expr ? out : "fx"));
+  span.addEventListener("click", () => {
+    const input = h("input", { class: "inline-input", value: expr, placeholder: "={Budget}*1.1", style: "text-align:right" });
+    cell.replaceChildren(input); input.focus(); input.select();
+    let done = false;
+    const fin = (ok) => { if (done) return; done = true; if (ok) setColVal(task, col, input.value.trim()); softRenderTable(getBoard()); };
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") fin(true); if (e.key === "Escape") fin(false); e.stopPropagation(); });
+    input.addEventListener("blur", () => fin(true));
+  });
+  cell.append(span);
+  return cell;
+}
+
+// --- Checkbox ---
+function colCheckboxCellEl(task, col) {
+  const on = !!task.cells[col.id];
+  const cell = h("div", { class: "cell", style: "justify-content:center" });
+  const box = h("button", { class: "cb-cell" + (on ? " on" : ""), title: on ? "Checked" : "Unchecked" }, on ? ico("check", 14) : null);
+  box.addEventListener("click", () => { setColVal(task, col, on ? "" : true); softRenderTable(getBoard()); });
+  cell.append(box);
+  return cell;
+}
+
+// --- Timeline: start–end date range ---
+function colTimelineCellEl(task, col) {
+  const v = task.cells[col.id] || {};
+  const cell = h("div", { class: "cell date-cell" + (v.start || v.end ? "" : " empty"), title: "Set date range" });
+  if (v.start || v.end) cell.append(h("span", { class: "range-pill" }, fmtRange(v.start || v.end, v.end || v.start)));
+  else cell.append(ico("gantt", 14));
+  cell.addEventListener("click", () => openDropdown(cell, (dd, close) => {
+    const cur = task.cells[col.id] || {};
+    const s = h("input", { type: "date", value: cur.start || "" });
+    const e = h("input", { type: "date", value: cur.end || "" });
+    const apply = () => { setColVal(task, col, { start: s.value, end: e.value }); softRenderTable(getBoard()); };
+    s.addEventListener("change", apply); e.addEventListener("change", apply);
+    const clr = h("button", { onclick: () => { setColVal(task, col, ""); close(); softRenderTable(getBoard()); } }, "Clear");
+    dd.append(h("div", { class: "date-pop" },
+      h("label", { class: "tl-row" }, h("span", { class: "muted" }, "Start"), s),
+      h("label", { class: "tl-row" }, h("span", { class: "muted" }, "End"), e),
+      h("div", { class: "date-pop-row" }, clr)));
+  }, { minWidth: 220 }));
+  return cell;
+}
+
+// --- Files: list of file names (demo) ---
+function colFilesCellEl(task, col) {
+  const arr = Array.isArray(task.cells[col.id]) ? task.cells[col.id] : [];
+  const cell = h("div", { class: "cell file-cell", title: "Manage files" });
+  if (arr.length) cell.append(ico("paperclip", 14), h("span", {}, arr.length));
+  else cell.append(h("span", { class: "muted", style: "display:flex;align-items:center;gap:4px" }, ico("paperclip", 14), "Add"));
+  cell.addEventListener("click", () => openDropdown(cell, (dd, close) => {
+    dd.append(h("div", { class: "dd-title" }, "Files"));
+    const list = h("div", {});
+    const draw = () => {
+      list.replaceChildren();
+      const cur = Array.isArray(task.cells[col.id]) ? task.cells[col.id] : [];
+      if (!cur.length) list.append(h("div", { class: "muted", style: "padding:4px 2px;font-size:12px" }, "No files yet"));
+      cur.forEach((nm, i) => {
+        const del = h("button", { class: "row-act", onclick: () => { const a = [...cur]; a.splice(i, 1); setColVal(task, col, a); draw(); softRenderTable(getBoard()); } }); del.append(ico("trash", 13));
+        list.append(h("div", { class: "dd-item", style: "gap:6px" }, ico("paperclip", 13), h("span", { style: "flex:1" }, nm), del));
+      });
+    };
+    draw();
+    dd.append(list, h("hr", { class: "dd-sep" }),
+      h("button", { class: "dd-footer-btn", onclick: () => { const nm = prompt("File name (demo)"); if (nm && nm.trim()) { const a = Array.isArray(task.cells[col.id]) ? [...task.cells[col.id]] : []; a.push(nm.trim()); setColVal(task, col, a); draw(); softRenderTable(getBoard()); } } }, "＋ Add file"));
+  }, { minWidth: 220 }));
+  return cell;
+}
+
+// --- Connect boards: link an item from another board ---
+function colConnectCellEl(board, task, col) {
+  const v = task.cells[col.id];
+  const cell = h("div", { class: "cell connect-cell", title: "Link an item" });
+  if (v && v.name) cell.append(h("span", { class: "dd-tag", style: "background:#a25ddc" }, ico("link", 12), h("span", {}, v.name)));
+  else cell.append(h("span", { class: "muted", style: "display:flex;align-items:center;gap:4px" }, ico("link", 14), "Connect"));
+  cell.addEventListener("click", () => openDropdown(cell, (dd, close) => {
+    dd.append(h("div", { class: "dd-title" }, "Link an item"));
+    const others = wsBoards().filter(b => b.id !== board.id);
+    if (!others.length) { dd.append(h("div", { class: "dd-item disabled" }, "No other boards")); return; }
+    for (const b of others) {
+      for (const g of b.groups) for (const t of g.tasks) {
+        dd.append(h("div", { class: "dd-item", style: "gap:6px", onclick: () => { setColVal(task, col, { boardId: b.id, taskId: t.id, name: t.name }); close(); softRenderTable(getBoard()); } },
+          ico(b.icon || "table", 13), h("span", { style: "flex:1" }, t.name), h("span", { class: "muted", style: "font-size:11px" }, b.name)));
+      }
+    }
+    if (v) dd.append(h("hr", { class: "dd-sep" }), h("button", { class: "dd-footer-btn", onclick: () => { setColVal(task, col, ""); close(); softRenderTable(getBoard()); } }, "Clear link"));
+  }, { minWidth: 260 }));
+  return cell;
+}
+
+// --- Extract info: AI placeholder ---
+function colExtractCellEl(task, col) {
+  const v = task.cells[col.id] || "";
+  const cell = h("div", { class: "cell", title: "AI extract (demo)" });
+  if (v) cell.append(h("span", { style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, v));
+  else cell.append(h("button", { class: "wh-ai", style: "pointer-events:none" }, ico("vibe", 12), h("span", {}, "Extract")));
+  cell.addEventListener("click", () => {
+    setColVal(task, col, "Auto-extracted ✦");
+    toast("Extract info — AI coming soon (demo filled a sample)");
+    softRenderTable(getBoard());
+  });
+  return cell;
 }
 
 function textCellEl(task, col) {
@@ -2515,12 +2724,11 @@ function colDateCellEl(task, col) {
   const v = task.cells[col.id];
   const cell = h("div", { class: "cell date-cell" + (v ? "" : " empty"), title: "Set date" });
   if (!v) cell.append(ico("calendar", 14)); else cell.append(h("span", {}, fmtDate(v)));
-  cell.addEventListener("click", () => openDropdown(cell, (dd, close) => {
-    const input = h("input", { type: "date", value: v || "" });
-    input.addEventListener("change", () => { setColVal(task, col, input.value); close(); softRenderTable(getBoard()); });
-    const clr = h("button", { onclick: () => { setColVal(task, col, ""); close(); softRenderTable(getBoard()); } }, "Clear");
-    dd.append(h("div", { class: "date-pop" }, input, h("div", { class: "date-pop-row" }, clr)));
-  }, { minWidth: 200 }));
+  cell.addEventListener("click", () => calendarPicker(cell, {
+    value: v || "",
+    onPick: (iso) => { setColVal(task, col, iso); softRenderTable(getBoard()); },
+    onClear: () => { setColVal(task, col, ""); softRenderTable(getBoard()); },
+  }));
   return cell;
 }
 
@@ -2849,40 +3057,77 @@ function dateCellEl(task) {
   return cell;
 }
 
-function datePicker(anchor, taskId) {
+// monday-style calendar popover. opts: { value, onPick(iso), onClear() }
+function calendarPicker(anchor, opts) {
+  const fmtMDY = (iso) => { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${m}/${d}/${y}`; };
+  const parseMDY = (s) => { const m = (s || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); if (!m) return null; const mm = +m[1], dd = +m[2], yy = +m[3]; if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null; return `${yy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`; };
+  let sel = opts.value || "";
+  const base = sel ? new Date(sel + "T00:00:00") : new Date();
+  let vy = base.getFullYear(), vm = base.getMonth();
+
   openDropdown(anchor, (el, close) => {
-    const t = locateTask(taskId)?.task;
-    if (!t) return;
-    const input = h("input", { type: "date", value: t.due });
-    input.addEventListener("change", () => {
-      const tk = locateTask(taskId)?.task;
-      if (!tk) return;
-      tk.due = input.value;
-      touch(tk);
-      save();
-      close();
-      softRender();
-    });
-    const todayBtn = h("button", { onclick: () => {
-      const tk = locateTask(taskId)?.task;
-      if (!tk) return;
-      tk.due = todayISO();
-      touch(tk);
-      save();
-      close();
-      softRender();
-    } }, "Today");
-    const clearBtn = h("button", { onclick: () => {
-      const tk = locateTask(taskId)?.task;
-      if (!tk) return;
-      tk.due = "";
-      touch(tk);
-      save();
-      close();
-      softRender();
-    } }, "Clear");
-    el.append(h("div", { class: "date-pop" }, input, h("div", { class: "date-pop-row" }, todayBtn, clearBtn)));
-  }, { minWidth: 220 });
+    el.classList.add("cal-pop");
+    const choose = (iso) => { sel = iso; opts.onPick && opts.onPick(iso); close(); };
+
+    const todayBtn = h("button", { class: "cal-today", onclick: () => choose(todayISO()) }, "Today");
+    const clockBtn = h("button", { class: "cal-iconbtn", title: "Jump to today", onclick: () => { const t = new Date(); vy = t.getFullYear(); vm = t.getMonth(); draw(); } }, ico("clock", 16));
+    el.append(h("div", { class: "cal-head" }, todayBtn, clockBtn));
+
+    const input = h("input", { class: "cal-input", type: "text", value: fmtMDY(sel), placeholder: "MM/DD/YYYY" });
+    input.addEventListener("change", () => { const iso = parseMDY(input.value); if (iso) { sel = iso; vy = +iso.slice(0, 4); vm = +iso.slice(5, 7) - 1; draw(); } });
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { const iso = parseMDY(input.value); if (iso) choose(iso); } e.stopPropagation(); });
+    el.append(input);
+
+    const body = h("div", {});
+    el.append(body);
+    const draw = () => {
+      body.replaceChildren();
+      const monthSel = h("select", { class: "cal-sel" });
+      MONTHS.forEach((mn, i) => monthSel.append(h("option", { value: i }, mn)));
+      monthSel.value = vm;
+      monthSel.addEventListener("change", () => { vm = +monthSel.value; draw(); });
+      const yrSel = h("select", { class: "cal-sel" });
+      const nowY = new Date().getFullYear();
+      const years = [];
+      for (let y = nowY - 5; y <= nowY + 6; y++) years.push(y);
+      if (!years.includes(vy)) years.push(vy);
+      years.sort((a, b) => a - b).forEach(y => yrSel.append(h("option", { value: y }, y)));
+      yrSel.value = vy;
+      yrSel.addEventListener("change", () => { vy = +yrSel.value; draw(); });
+      const prev = h("button", { class: "cal-nav", onclick: () => { vm--; if (vm < 0) { vm = 11; vy--; } draw(); } }, ico("chevLeft", 16));
+      const next = h("button", { class: "cal-nav", onclick: () => { vm++; if (vm > 11) { vm = 0; vy++; } draw(); } }, ico("chevRight", 16));
+      body.append(h("div", { class: "cal-bar" }, monthSel, yrSel, h("div", { style: "flex:1" }), prev, next));
+
+      const wk = h("div", { class: "cal-grid cal-wk" });
+      ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].forEach(d => wk.append(h("span", { class: "cal-wd" }, d)));
+      body.append(wk);
+
+      const grid = h("div", { class: "cal-grid" });
+      const lead = (new Date(vy, vm, 1).getDay() + 6) % 7; // Monday-first
+      const start = new Date(vy, vm, 1 - lead);
+      const todayIso = todayISO();
+      for (let i = 0; i < 42; i++) {
+        const d = new Date(start); d.setDate(start.getDate() + i);
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const cls = "cal-day" + (d.getMonth() !== vm ? " out" : "") + (iso === sel ? " sel" : "") + (iso === todayIso ? " today" : "");
+        grid.append(h("button", { class: cls, onclick: () => (iso === sel && opts.onClear) ? (opts.onClear(), close()) : choose(iso) }, String(d.getDate())));
+      }
+      body.append(grid);
+    };
+    draw();
+
+    el.append(h("hr", { class: "dd-sep" }));
+    el.append(h("button", { class: "cal-autofill", onclick: () => choose(todayISO()) }, ico("vibe", 14), h("span", {}, "Autofill date")));
+  }, { minWidth: 280 });
+}
+
+function datePicker(anchor, taskId) {
+  const t = locateTask(taskId)?.task;
+  calendarPicker(anchor, {
+    value: t ? t.due : "",
+    onPick: (iso) => { const tk = locateTask(taskId)?.task; if (!tk) return; tk.due = iso; touch(tk); save(); softRender(); },
+    onClear: () => { const tk = locateTask(taskId)?.task; if (!tk) return; tk.due = ""; touch(tk); save(); softRender(); },
+  });
 }
 
 function priorityCellEl(task) {

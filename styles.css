@@ -773,6 +773,65 @@ input, textarea, select {
   border-radius: 6px;
 }
 .date-pop-row button:hover { background: var(--surface-2); }
+.tl-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tl-row span { font-size: 12px; }
+
+/* ============ Calendar popover (monday-style) ============ */
+.cal-pop { padding: 12px; width: 280px; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.cal-today {
+  border: 1px solid var(--border); background: var(--surface);
+  border-radius: 8px; padding: 5px 14px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--text);
+}
+.cal-today:hover { background: var(--surface-2); }
+.cal-iconbtn { border: none; background: none; cursor: pointer; color: var(--text-2); padding: 4px; border-radius: 6px; display: inline-flex; }
+.cal-iconbtn:hover { background: var(--surface-2); color: var(--text); }
+.cal-input {
+  width: 100%; height: 38px; padding: 0 12px; margin-bottom: 12px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 14px; outline: none;
+}
+.cal-input:focus { border-color: var(--primary); }
+.cal-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.cal-sel {
+  border: none; background: none; font-size: 14px; font-weight: 600; color: var(--text);
+  cursor: pointer; padding: 2px 4px; border-radius: 6px;
+}
+.cal-sel:hover { background: var(--surface-2); }
+.cal-nav { border: none; background: none; cursor: pointer; color: var(--text-2); padding: 4px; border-radius: 6px; display: inline-flex; }
+.cal-nav:hover { background: var(--surface-2); color: var(--text); }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal-wk { margin-bottom: 4px; }
+.cal-wd { text-align: center; font-size: 12px; color: var(--text-2); padding: 4px 0; }
+.cal-day {
+  aspect-ratio: 1; border: none; background: none; cursor: pointer;
+  border-radius: 8px; font-size: 13px; color: var(--text);
+  display: flex; align-items: center; justify-content: center;
+}
+.cal-day:hover { background: var(--surface-2); }
+.cal-day.out { color: var(--text-2); opacity: .45; }
+.cal-day.today { font-weight: 700; box-shadow: inset 0 0 0 1px var(--primary); }
+.cal-day.sel { background: var(--primary); color: #fff; font-weight: 600; }
+.cal-day.sel:hover { background: var(--primary); }
+.cal-autofill {
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+  border: none; background: none; cursor: pointer; color: var(--text); font-size: 13px; padding: 8px; border-radius: 8px;
+}
+.cal-autofill:hover { background: var(--surface-2); }
+
+/* ============ New column-cell types ============ */
+.cb-cell {
+  width: 22px; height: 22px; border-radius: 5px; cursor: pointer;
+  border: 2px solid var(--border); background: var(--bg);
+  display: inline-flex; align-items: center; justify-content: center; color: #fff;
+}
+.cb-cell.on { background: #00c875; border-color: #00c875; }
+.file-cell, .connect-cell { gap: 6px; cursor: pointer; }
+.file-cell:hover, .connect-cell:hover { background: var(--surface-2); }
+
+/* ============ Custom column drag-to-reorder ============ */
+.col-drag.col-dragging { opacity: .5; }
+.col-drag.col-drop-left { box-shadow: inset 3px 0 0 var(--primary); }
+.col-drag.col-drop-right { box-shadow: inset -3px 0 0 var(--primary); }
 
 /* ============ Bulk action bar ============ */
 
