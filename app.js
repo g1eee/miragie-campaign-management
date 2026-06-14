@@ -1867,7 +1867,11 @@ function rerenderViewOnly(board) {
   const main = q("#main");
   const old = main.querySelector(".view-root");
   if (!old) return;
-  old.replaceWith(viewBodyEl(board));
+  // preserve scroll position so a cell action doesn't jump back to the first columns
+  const sx = old.scrollLeft, sy = old.scrollTop;
+  const next = viewBodyEl(board);
+  old.replaceWith(next);
+  if (sx || sy) { next.scrollLeft = sx; next.scrollTop = sy; }
 }
 
 function newTaskIn(board, group) {
