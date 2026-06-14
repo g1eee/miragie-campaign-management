@@ -3713,15 +3713,11 @@ function workspaceHomeEl() {
   const root = h("div", { class: "view-root wh" });
   root.append(h("div", { class: "wh-banner" }));
   // hero portrait mirrors the current user's profile character; updates when you change it
-  const heroOn = (state.skin || "default") === "frieren";
+  const heroOn = !!(me().avatar || WH_HERO);
   if (heroOn) {
     const hero = h("img", { class: "wh-hero", src: me().avatar || WH_HERO, alt: "" });
     hero.addEventListener("error", () => { hero.remove(); const hd = root.querySelector(".wh-head"); if (hd) hd.classList.remove("has-hero"); });
     root.append(hero);
-    // falling sakura petals over the banner
-    const sakura = h("div", { class: "sakura" });
-    for (let i = 0; i < 12; i++) sakura.append(h("span", { class: "petal" }));
-    root.append(sakura);
   }
   const body = h("div", { class: "wh-body" });
 
