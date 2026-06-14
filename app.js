@@ -2797,7 +2797,8 @@ function colTimelineCellEl(task, col) {
 const fileName = (f) => typeof f === "string" ? f : (f && f.name) || "file";
 const fileUrl = (f) => (f && typeof f === "object") ? f.url : null;
 const IMG_EXT_RE = /\.(png|jpe?g|jfif|pjpeg|gif|webp|svg|bmp|avif|heic|heif)$/i;
-const fileIsImg = (f) => (f && f.kind === "image") || (() => { const u = fileUrl(f); return !!u && (u.startsWith("data:image") || IMG_EXT_RE.test(u)); })() || (typeof f === "object" && f && IMG_EXT_RE.test(fileName(f)));
+// only a real preview if there's actual data/url — a name-only entry isn't viewable
+const fileIsImg = (f) => { const u = fileUrl(f); return !!u && ((f && f.kind === "image") || u.startsWith("data:image") || IMG_EXT_RE.test(u)); };
 
 // small inline thumbnail/icon for a file entry
 function fileThumb(f) {
