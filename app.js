@@ -2599,18 +2599,31 @@ function colTimelineCellEl(task, col) {
   const cell = h("div", { class: "cell date-cell" + (v.start || v.end ? "" : " empty"), title: "Set date range" });
   if (v.start || v.end) cell.append(h("span", { class: "range-pill" }, fmtRange(v.start || v.end, v.end || v.start)));
   else cell.append(ico("gantt", 14));
-  cell.addEventListener("click", () => openDropdown(cell, (dd, close) => {
+
+  const open = () => openDropdown(cell, (dd, close) => {
     const cur = task.cells[col.id] || {};
-    const s = h("input", { type: "date", value: cur.start || "" });
-    const e = h("input", { type: "date", value: cur.end || "" });
-    const apply = () => { setColVal(task, col, { start: s.value, end: e.value }); softRenderTable(getBoard()); };
-    s.addEventListener("change", apply); e.addEventListener("change", apply);
+    const field = (label, key) => {
+      const val = cur[key];
+      const b = h("button", { class: "tl-field" },
+        h("span", { class: "muted" }, label),
+        h("span", { class: val ? "" : "muted" }, val ? fmtDate(val) : "mm/dd/yyyy"),
+        ico("calendar", 14));
+      // clicking opens the small calendar; on pick, reopen this timeline popover
+      b.addEventListener("click", () => calendarPicker(b, {
+        value: val || "",
+        onPick: (iso) => { const c = { ...(task.cells[col.id] || {}) }; c[key] = iso; setColVal(task, col, c); softRenderTable(getBoard()); open(); },
+        onClear: () => { const c = { ...(task.cells[col.id] || {}) }; c[key] = ""; setColVal(task, col, c); softRenderTable(getBoard()); open(); },
+      }));
+      return b;
+    };
     const clr = h("button", { onclick: () => { setColVal(task, col, ""); close(); softRenderTable(getBoard()); } }, "Clear");
     dd.append(h("div", { class: "date-pop" },
-      h("label", { class: "tl-row" }, h("span", { class: "muted" }, "Start"), s),
-      h("label", { class: "tl-row" }, h("span", { class: "muted" }, "End"), e),
+      field("Start", "start"),
+      field("End", "end"),
       h("div", { class: "date-pop-row" }, clr)));
-  }, { minWidth: 220 }));
+  }, { minWidth: 220 });
+
+  cell.addEventListener("click", open);
   return cell;
 }
 
@@ -5107,8 +5120,8 @@ function scaleImageWide(file, maxW, cb) {
 
 function richEditor(onPost) {
   const wrap = h("div", { class: "ip-composer" });
-  const card = h("div", { class: "rich-card" });
-  const area = h("div", { class: "rich-area", contenteditable: "true", "data-ph": "Write an update..." });
+  const card = h("div", { class: "rich-card collapsed" });
+  const area = h("div", { class: "rich-area", contenteditable: "true", "data-ph": "Write an update and mention others with @" });
   const cmd = (c, v) => { area.focus(); try { document.execCommand(c, false, v || null); } catch (e) {} };
   const btn = (inner, c, title) => {
     const b = h("button", { class: "rich-btn", title });
@@ -5145,7 +5158,8 @@ function richEditor(onPost) {
     fileIn.value = "";
   });
 
-  const toolbar = h("div", { class: "rich-toolbar" },
+  // formatting toolbar — hidden until the pencil toggle is clicked (keeps composer compact)
+  const toolbar = h("div", { class: "rich-toolbar hidden" },
     btn("<b>B</b>", "bold", "Bold"),
     btn("<i>I</i>", "italic", "Italic"),
     btn("<u>U</u>", "underline", "Underline"),
@@ -5156,6 +5170,10 @@ function richEditor(onPost) {
     btn(ico("numbers", 15), "insertOrderedList", "Numbered list"),
     linkBtn);
 
+  const fmtBtn = h("button", { class: "rich-act", title: "Formatting" }, ico("pencil", 16));
+  fmtBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  fmtBtn.addEventListener("click", () => { const hide = toolbar.classList.toggle("hidden"); fmtBtn.classList.toggle("on", !hide); card.classList.add("active"); });
+
   const postBtn = h("button", { class: "btn-primary rich-post" }, "Update");
   const post = () => {
     const html = area.innerHTML.trim();
@@ -5163,19 +5181,26 @@ function richEditor(onPost) {
     if (!plain && !/<img/i.test(html)) return;
     onPost(sanitizeHTML(html), plain || "📎 image");
     area.innerHTML = "";
+    card.classList.remove("active");
+    toolbar.classList.add("hidden"); fmtBtn.classList.remove("on");
   };
   postBtn.addEventListener("click", post);
   area.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); post(); } });
+
+  // expand on focus, collapse again when left empty
+  area.addEventListener("focus", () => card.classList.add("active"));
+  area.addEventListener("blur", () => { if (!(area.textContent || "").trim() && !/<img/i.test(area.innerHTML)) { card.classList.remove("active"); toolbar.classList.add("hidden"); fmtBtn.classList.remove("on"); } });
 
   const footer = h("div", { class: "rich-footer" },
     h("div", { class: "rich-actions" },
       actBtn("at", "Mention", () => cmd("insertText", "@")),
       actBtn("paperclip", "Attach image", () => fileIn.click()),
       actBtn("GIF", "Add a GIF", () => toast("GIFs — coming soon in demo")),
-      actBtn("smile", "Emoji", (ev) => emojiPicker(ev.currentTarget, (em) => cmd("insertText", em)))),
+      actBtn("smile", "Emoji", (ev) => emojiPicker(ev.currentTarget, (em) => cmd("insertText", em))),
+      fmtBtn),
     postBtn);
 
-  card.append(toolbar, area, footer);
+  card.append(area, toolbar, footer);
   wrap.append(card, fileIn);
   return wrap;
 }

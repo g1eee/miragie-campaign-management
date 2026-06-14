@@ -2403,11 +2403,23 @@ html.gated, html.gated body { overflow: hidden; }
 .rich-card .rich-toolbar { border: none; border-bottom: 1px solid var(--border); border-radius: 0; background: var(--bg); padding: 6px 8px; }
 .rich-card .rich-area { border: none; border-radius: 0; min-height: 64px; }
 .rich-card .rich-area:focus { border: none; }
+/* compact composer: collapse when idle, expand on focus / formatting */
+.rich-card.collapsed .rich-area { min-height: 38px; }
+.rich-card.active .rich-area { min-height: 64px; }
+.rich-toolbar.hidden { display: none; }
 .rich-footer { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-top: 1px solid var(--border); background: var(--bg); }
+.rich-card.collapsed:not(.active) .rich-footer { border-top: none; }
 .rich-actions { display: flex; align-items: center; gap: 2px; }
 .rich-act { width: 30px; height: 30px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-2); }
 .rich-act:hover { background: var(--surface-2); color: var(--text); }
+.rich-act.on { background: var(--primary-soft); color: var(--primary); }
 .rich-post { height: 32px; padding: 0 16px; border-radius: 7px; align-self: center; }
+.rich-card.collapsed:not(.active) .rich-post { display: none; }
+/* timeline popover date fields */
+.tl-field { display: flex; align-items: center; gap: 8px; width: 100%; height: 38px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); cursor: pointer; font-size: 13px; }
+.tl-field:hover { border-color: var(--primary); }
+.tl-field > span:first-child { width: 38px; text-align: left; }
+.tl-field > span:nth-child(2) { flex: 1; text-align: left; }
 
 .ip-tabbar { display: flex; gap: 2px; border-bottom: 1px solid var(--border); padding: 0 16px; margin-top: 8px; flex: none; }
 .ip-tab { display: inline-flex; align-items: center; gap: 6px; padding: 9px 10px; color: var(--text-2); border-bottom: 2px solid transparent; font-size: 13px; }
