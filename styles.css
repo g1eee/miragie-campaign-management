@@ -1861,6 +1861,11 @@ input, textarea, select {
 
 /* ============ Custom columns ============ */
 
+.col-head-cell { position: relative; }
+.col-resize { position: absolute; top: 0; right: -3px; width: 8px; height: 100%; cursor: col-resize; z-index: 5; }
+.col-resize::after { content: ""; position: absolute; top: 6px; bottom: 6px; right: 3px; width: 2px; border-radius: 2px; background: transparent; }
+.col-head-cell:hover .col-resize::after { background: var(--border-2); }
+.col-resize:hover::after { background: var(--primary); }
 .col-head-cell .col-menu-btn { visibility: hidden; border-radius: 4px; padding: 2px; color: var(--text-2); display: inline-flex; }
 .col-head-cell:hover .col-menu-btn { visibility: visible; }
 .col-head-cell .col-menu-btn:hover { background: var(--surface-2); color: var(--text); }

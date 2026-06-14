@@ -2031,10 +2031,53 @@ function orderedCols(board) {
   const out = [];
   for (const id of order) {
     if (board.hidden.includes(id)) continue;
-    if (sysMap[id]) out.push({ kind: "sys", id, w: sysMap[id].w, sys: sysMap[id] });
-    else if (customMap[id]) out.push({ kind: "custom", id, w: customMap[id].width || 150, col: customMap[id] });
+    if (sysMap[id]) out.push({ kind: "sys", id, w: colW(board, id), sys: sysMap[id] });
+    else if (customMap[id]) out.push({ kind: "custom", id, w: colW(board, id), col: customMap[id] });
   }
   return out;
+}
+
+// effective column width (per-board override in board.colWidths, else default)
+function colW(board, id) {
+  const ov = board.colWidths && board.colWidths[id];
+  if (ov) return ov;
+  const sys = COLUMNS.find(c => c.id === id); if (sys) return sys.w;
+  const cc = board.columns.find(c => c.id === id); return cc ? (cc.width || 150) : 150;
+}
+
+// live-resize: update grid templates + custom col width without a full rebuild
+function setColWidth(board, id, w) {
+  board.colWidths = board.colWidths || {};
+  board.colWidths[id] = w;
+  const cc = board.columns.find(c => c.id === id); if (cc) cc.width = w;
+  const main = q("#main"); if (!main) return;
+  const tpl = gridTemplate(board);
+  main.querySelectorAll(".g-row:not(.add-task-row)").forEach(r => { r.style.gridTemplateColumns = tpl; });
+  const wrap = main.querySelector(".group-wrap"); if (wrap) wrap.style.minWidth = gridMinWidth(board) + "px";
+}
+
+// drag the right edge of a column header to resize it
+function attachColResize(cell, board, id) {
+  const grip = h("div", { class: "col-resize", title: "Resize column" });
+  grip.addEventListener("mousedown", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const startX = e.clientX, startW = colW(board, id);
+    cell.setAttribute("draggable", "false");
+    document.body.style.cursor = "col-resize";
+    let raf = 0, w = startW;
+    const move = (ev) => { w = Math.max(80, startW + (ev.clientX - startX)); if (!raf) raf = requestAnimationFrame(() => { raf = 0; setColWidth(board, id, w); }); };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.style.cursor = "";
+      cell.setAttribute("draggable", "true");
+      setColWidth(board, id, w); save();
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
+  grip.addEventListener("click", (e) => e.stopPropagation());
+  cell.appendChild(grip);
 }
 
 // Rule: a Text content column is locked (cannot be dragged). Everything else can reorder.
@@ -2314,6 +2357,7 @@ function colHeaderEl(board, col) {
 function colHeaderUnifiedEl(board, oc) {
   const cell = oc.kind === "sys" ? sysColHeaderEl(board, oc.sys) : colHeaderEl(board, oc.col);
   attachColDrag(cell, board, oc.id, colReorderable(oc));
+  attachColResize(cell, board, oc.id);
   return cell;
 }
 
