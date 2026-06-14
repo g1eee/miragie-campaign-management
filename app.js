@@ -2793,27 +2793,53 @@ function colTimelineCellEl(task, col) {
 }
 
 // --- Files: list of file names (demo) ---
+// file entries are objects {name, url?} (legacy plain strings still supported)
+const fileName = (f) => typeof f === "string" ? f : (f && f.name) || "file";
+const fileUrl = (f) => (f && typeof f === "object") ? f.url : null;
+
 function colFilesCellEl(task, col) {
   const arr = Array.isArray(task.cells[col.id]) ? task.cells[col.id] : [];
   const cell = h("div", { class: "cell file-cell", title: "Manage files" });
   if (arr.length) cell.append(ico("paperclip", 14), h("span", {}, arr.length));
   else cell.append(h("span", { class: "muted", style: "display:flex;align-items:center;gap:4px" }, ico("paperclip", 14), "Add"));
+
+  const add = (entry) => {
+    const a = Array.isArray(task.cells[col.id]) ? [...task.cells[col.id]] : [];
+    a.push(entry); setColVal(task, col, a); softRenderTable(getBoard());
+  };
+
   cell.addEventListener("click", () => openDropdown(cell, (dd, close) => {
     dd.append(h("div", { class: "dd-title" }, "Files"));
     const list = h("div", {});
     const draw = () => {
       list.replaceChildren();
       const cur = Array.isArray(task.cells[col.id]) ? task.cells[col.id] : [];
-      if (!cur.length) list.append(h("div", { class: "muted", style: "padding:4px 2px;font-size:12px" }, "No files yet"));
-      cur.forEach((nm, i) => {
-        const del = h("button", { class: "row-act", onclick: () => { const a = [...cur]; a.splice(i, 1); setColVal(task, col, a); draw(); softRenderTable(getBoard()); } }); del.append(ico("trash", 13));
-        list.append(h("div", { class: "dd-item", style: "gap:6px" }, ico("paperclip", 13), h("span", { style: "flex:1" }, nm), del));
+      if (!cur.length) { list.append(h("div", { class: "muted", style: "padding:4px 2px;font-size:12px" }, "No files yet")); return; }
+      cur.forEach((f, i) => {
+        const del = h("button", { class: "row-act", onclick: (e) => { e.stopPropagation(); const a = [...cur]; a.splice(i, 1); setColVal(task, col, a); draw(); softRenderTable(getBoard()); } }); del.append(ico("trash", 13));
+        const url = fileUrl(f);
+        const label = url ? h("a", { href: url, target: "_blank", rel: "noopener", style: "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", onclick: (e) => e.stopPropagation() }, fileName(f))
+                          : h("span", { style: "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, fileName(f));
+        list.append(h("div", { class: "dd-item", style: "gap:6px" }, ico(url ? "link" : "paperclip", 13), label, del));
       });
     };
     draw();
-    dd.append(list, h("hr", { class: "dd-sep" }),
-      h("button", { class: "dd-footer-btn", onclick: () => { const nm = prompt("File name (demo)"); if (nm && nm.trim()) { const a = Array.isArray(task.cells[col.id]) ? [...task.cells[col.id]] : []; a.push(nm.trim()); setColVal(task, col, a); draw(); softRenderTable(getBoard()); } } }, "＋ Add file"));
-  }, { minWidth: 220 }));
+    dd.append(list, h("hr", { class: "dd-sep" }));
+
+    // hidden picker for "From Computer"
+    const fileIn = h("input", { type: "file", style: "display:none" });
+    fileIn.addEventListener("change", () => { const f = fileIn.files[0]; if (f) { add({ name: f.name }); draw(); } fileIn.value = ""; });
+    dd.append(fileIn);
+
+    const opt = (icon, label, fn) => { const it = ddItem(icon, label, fn); dd.append(it); return it; };
+    opt("download", "From Computer", () => fileIn.click());
+    opt("camera", "From Webcam", () => toast("Webcam capture — coming soon in demo"));
+    opt("doc", "Doc", () => { const n = prompt("Document name"); if (n && n.trim()) { add({ name: n.trim() }); draw(); } });
+    opt("link", "From Link", () => { let u = prompt("Paste a link (URL)"); if (u && u.trim()) { u = u.trim(); if (!/^https?:\/\//i.test(u)) u = "https://" + u; add({ name: u, url: u }); draw(); } });
+    opt("cloud", "From Google Drive", () => toast("Google Drive — coming soon in demo"));
+    opt("cloud", "From Dropbox", () => toast("Dropbox — coming soon in demo"));
+    opt("folder", "From Box", () => toast("Box — coming soon in demo"));
+  }, { minWidth: 230 }));
   return cell;
 }
 
