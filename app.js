@@ -2939,8 +2939,8 @@ function taskRowEl(board, group, task, tpl, cols) {
   const nameCell = h("div", { class: "cell name-col" }, nameSpan);
   const hasUpd = task.updates.length > 0;
   const chat = h("button", { class: "updates-chip" + (hasUpd ? " has" : ""), title: hasUpd ? `${task.updates.length} update(s)` : "Add an update" });
-  chat.append(ico("chat", 13));
-  if (hasUpd) chat.append(h("span", {}, task.updates.length));
+  if (hasUpd) chat.append(ico("chat", 15), h("span", { class: "uc-count" }, task.updates.length));
+  else chat.append(ico("chat", 15), h("span", { class: "uc-plus" }, "+"));
   chat.addEventListener("click", (e) => { e.stopPropagation(); ui.panel = task.id; renderPanel(); });
   nameCell.append(chat);
   // file/image attachment indicator — coloured when the item has files
