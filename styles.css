@@ -1194,7 +1194,7 @@ input, textarea, select {
 [data-theme="dark"] .wh-banner { background: linear-gradient(120deg, #18351f 0%, #15233f 60%, #261a40 100%); }
 
 .wh-body { padding: 0 40px 40px; max-width: 1180px; }
-.wh-head { display: flex; align-items: flex-end; gap: 18px; margin-top: -44px; }
+.wh-head { display: flex; align-items: center; gap: 18px; margin-top: -22px; }
 .wh-logo {
   width: 92px;
   height: 92px;
@@ -1225,7 +1225,7 @@ input, textarea, select {
   justify-content: center;
   color: var(--text);
 }
-.wh-titles { padding-bottom: 6px; flex: 1; }
+.wh-titles { flex: 1; }
 .wh-title-row { display: flex; align-items: center; gap: 10px; }
 .wh-name {
   font-size: 26px;
@@ -1236,7 +1236,7 @@ input, textarea, select {
   cursor: text;
 }
 .wh-name:hover { outline: 1px solid var(--border-2); }
-.wh-actions { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; }
+.wh-actions { display: flex; align-items: center; gap: 8px; }
 .wh-desc {
   color: var(--text-2);
   margin-top: 2px;
