@@ -356,12 +356,12 @@ function migrate() {
     if (!("avatar" in p)) p.avatar = null;
     if (!p.title) p.title = "Team member";
     if (!p.email) p.email = (p.name || "user").toLowerCase().replace(/\s+/g, ".").replace(/[^a-z.]/g, "") + "@campaign.co";
-    if (!p.role) p.role = p.id === state.user ? "Owner" : "Member";
+    p.role = p.role ? normRole(p.role) : (p.id === state.user ? OWNER_ROLE : DEFAULT_MEMBER_ROLE);
   }
   // Ownership is tied to the admin EMAIL, never to whoever is currently signed in.
-  // (In the shared team blob, state.user changes per member — must not grant Owner.)
+  // (In the shared team blob, state.user changes per member — must not grant SPV.)
   for (const p of state.people) {
-    if (p.role === "Owner" && (p.email || "").toLowerCase() !== ADMIN_EMAIL) p.role = "Member";
+    if (p.role === OWNER_ROLE && (p.email || "").toLowerCase() !== ADMIN_EMAIL) p.role = DEFAULT_MEMBER_ROLE;
   }
   let adminPerson = state.people.find(p => (p.email || "").toLowerCase() === ADMIN_EMAIL);
   if (!adminPerson) {
@@ -369,7 +369,7 @@ function migrate() {
     adminPerson = state.people.find(p => p.id === "u1" || p.email === "gie@campaign.co");
     if (adminPerson) adminPerson.email = ADMIN_EMAIL;
   }
-  if (adminPerson) adminPerson.role = "Owner";
+  if (adminPerson) adminPerson.role = OWNER_ROLE;
   // clean white theme now; accent comes from the avatar character
   state.skin = "default";
   // one-time: give members anime character avatars (user-supplied art)
@@ -557,10 +557,10 @@ function seed() {
     workspaces: [{ id: "w1", name: "Main workspace", desc: "", color: "#00854d", letter: "M" }],
     activeWorkspace: "w1",
     people: [
-      { id: "u1", name: "Gie", title: "Marketing Lead", email: "portfoliog1eee@gmail.com", role: "Owner", color: "#0073ea", avatar: null },
+      { id: "u1", name: "Gie", title: "Marketing Lead", email: "portfoliog1eee@gmail.com", role: "SPV", color: "#0073ea", avatar: null },
       { id: "u2", name: "Andi Pratama", title: "Content Strategist", email: "andi@campaign.co", role: "Admin", color: "#a25ddc", avatar: null },
-      { id: "u3", name: "Sari Dewi", title: "Social Media Manager", email: "sari@campaign.co", role: "Member", color: "#00c875", avatar: null },
-      { id: "u4", name: "Budi Santoso", title: "Graphic Designer", email: "budi@campaign.co", role: "Member", color: "#fdab3d", avatar: null },
+      { id: "u3", name: "Sari Dewi", title: "Social Media Manager", email: "sari@campaign.co", role: "Marketing", color: "#00c875", avatar: null },
+      { id: "u4", name: "Budi Santoso", title: "Graphic Designer", email: "budi@campaign.co", role: "Desainer", color: "#fdab3d", avatar: null },
     ],
     activeBoard: b1.id,
     boards: [b1, b2],
@@ -573,13 +573,25 @@ const getBoard = () => state.boards.find(b => b.id === state.activeBoard) || wsB
 const personById = (id) => state.people.find(p => p.id === id);
 const me = () => personById(state.user) || state.people[0];
 const ADMIN_EMAIL = "portfoliog1eee@gmail.com";
+// Roles: SPV is the owner-level role (full control). The rest are member-level
+// (can use boards, can't create workspaces). Viewer removed.
+const OWNER_ROLE = "SPV";
+const MEMBER_ROLES = ["Admin", "Marketing", "Desainer"];
+const DEFAULT_MEMBER_ROLE = "Marketing";
+// normalize any legacy role string to the new set
+function normRole(r) {
+  if (r === OWNER_ROLE) return OWNER_ROLE;
+  if (r === "Owner") return OWNER_ROLE;
+  if (MEMBER_ROLES.includes(r)) return r;
+  return DEFAULT_MEMBER_ROLE; // "Member", "Viewer", missing → default member role
+}
 // main admin = the owner account (full control: can create workspaces, manage members).
 // When signed into the cloud, admin is decided by the SERVER-VERIFIED email (tamper-resistant);
 // offline/local falls back to the local owner role so the demo stays fully usable.
 function isAdmin() {
   if (cloudOn() && window.CLOUD.user()) return (window.CLOUD.email() || "").toLowerCase() === ADMIN_EMAIL;
   const u = me();
-  return !!u && (u.role === "Owner" || (u.email || "").toLowerCase() === ADMIN_EMAIL);
+  return !!u && (u.role === OWNER_ROLE || (u.email || "").toLowerCase() === ADMIN_EMAIL);
 }
 // signed into the shared team cloud?
 const teamOn = () => cloudOn() && !!window.CLOUD.user();
@@ -591,10 +603,10 @@ function reconcileIdentity() {
   if (!email) return;
   let p = state.people.find(x => (x.email || "").toLowerCase() === email);
   if (!p) {
-    p = { id: uid(), name: email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase()), title: "Member", email, role: email === ADMIN_EMAIL ? "Owner" : "Member", color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null };
+    p = { id: uid(), name: email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase()), title: "Team member", email, role: email === ADMIN_EMAIL ? OWNER_ROLE : DEFAULT_MEMBER_ROLE, color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null };
     state.people.push(p);
   }
-  if (email === ADMIN_EMAIL) p.role = "Owner";
+  if (email === ADMIN_EMAIL) p.role = OWNER_ROLE;
   state.user = p.id;
 }
 const validEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s || "").trim());
@@ -1692,8 +1704,6 @@ function removeView(board, vid) {
   render();
 }
 
-const MEMBER_ROLES = ["Admin", "Member", "Viewer"];
-
 function peopleManager(anchor) {
   openDropdown(anchor, (el, close) => {
     const admin = isAdmin();
@@ -1702,7 +1712,7 @@ function peopleManager(anchor) {
       admin ? h("span", { class: "ws-role-chip", style: "background:var(--primary-soft);color:var(--primary);border:none" }, "Admin") : null));
 
     for (const p of state.people) {
-      const isOwner = p.role === "Owner";
+      const isOwner = p.role === OWNER_ROLE;
       const row = h("div", { class: "pm-row" }, avatarEl(p, 30),
         h("div", { class: "pm-info" },
           h("div", { class: "pm-name" }, p.name + (p.id === state.user ? " (you)" : "")),
@@ -1710,7 +1720,7 @@ function peopleManager(anchor) {
 
       // role: owner fixed; admin can change others; else read-only chip
       if (!isOwner && admin && p.id !== state.user) {
-        const roleBtn = h("button", { class: "ws-role-chip pm-role-btn" }, p.role || "Member", ico("chevDown", 11));
+        const roleBtn = h("button", { class: "ws-role-chip pm-role-btn" }, p.role || DEFAULT_MEMBER_ROLE, ico("chevDown", 11));
         roleBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           nestedMenu(roleBtn, MEMBER_ROLES.map(r => ({ label: r, value: r, check: p.role === r })), (o) => {
@@ -1720,7 +1730,7 @@ function peopleManager(anchor) {
         });
         row.append(roleBtn);
       } else {
-        row.append(h("span", { class: "ws-role-chip" }, isOwner ? "Owner" : (p.role || "Member")));
+        row.append(h("span", { class: "ws-role-chip" }, isOwner ? OWNER_ROLE : (p.role || DEFAULT_MEMBER_ROLE)));
       }
 
       const charBtn = h("button", { class: "row-act", title: "Anime character" });
@@ -1750,8 +1760,8 @@ function peopleManager(anchor) {
     const nameIn = h("input", { type: "text", placeholder: "Name (optional)" });
     const mailIn = h("input", { type: "email", placeholder: "name@email.com" });
 
-    // role selector — only admin can set a role; others invite as Member
-    let inviteRole = "Member";
+    // role selector — only admin can set a role; others invite as default member role
+    let inviteRole = DEFAULT_MEMBER_ROLE;
     const roleSel = h("button", { class: "pm-invite-role" }, inviteRole, ico("chevDown", 12));
     if (admin) {
       roleSel.addEventListener("click", (e) => {
@@ -1771,7 +1781,7 @@ function peopleManager(anchor) {
       if (!validEmail(email)) { toast("Enter a valid email"); mailIn.focus(); return; }
       if (state.people.some(p => (p.email || "").toLowerCase() === email)) { toast("That email is already a member"); return; }
       const name = nameIn.value.trim() || email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-      const role = admin ? inviteRole : "Member";
+      const role = admin ? inviteRole : DEFAULT_MEMBER_ROLE;
       // real invite: add to the team allow-list so they can load the shared workspace
       if (teamOn()) {
         if (!isAdmin()) { toast("Only the admin can invite members"); return; }
@@ -4392,7 +4402,7 @@ function membersListMenu(anchor) {
         h("div", { style: "flex:1;min-width:0" },
           h("div", { style: "font-weight:500" }, p.name + (p.id === state.user ? " (you)" : "")),
           h("div", { class: "muted", style: "font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" }, p.title || "Member")),
-        h("span", { class: "ws-role-chip" }, p.role || "Member"));
+        h("span", { class: "ws-role-chip" }, p.role || DEFAULT_MEMBER_ROLE));
       el.append(it);
     }
   }, { minWidth: 260 });
@@ -4407,7 +4417,7 @@ function memberProfilePopover(anchor, p) {
         h("div", { class: "mp-title" }, p.title || "Team member"))));
     el.append(h("hr", { class: "dd-sep" }));
     el.append(h("div", { class: "mp-field" }, ico("mail", 14), h("a", { class: "mp-mail", href: "mailto:" + p.email }, p.email)));
-    el.append(h("div", { class: "mp-field" }, ico("badge", 14), h("span", {}, "Workspace role: "), h("span", { class: "ws-role-chip" }, p.role || "Member")));
+    el.append(h("div", { class: "mp-field" }, ico("badge", 14), h("span", {}, "Workspace role: "), h("span", { class: "ws-role-chip" }, p.role || DEFAULT_MEMBER_ROLE)));
     el.append(h("hr", { class: "dd-sep" }));
     el.append(ddItem("smile", "Change anime character", () => characterPicker(anchor, p)));
   }, { minWidth: 250 });
@@ -4453,7 +4463,7 @@ function whCollaborators() {
         h("b", {}, p.name + (p.id === state.user ? " · you" : "")),
         h("div", { class: "wh-collab-title" }, p.title || "Team member"),
         h("a", { class: "wh-collab-mail", href: "mailto:" + p.email, onclick: (e) => e.stopPropagation() }, p.email)),
-      h("span", { class: "ws-role-chip" }, p.role || "Member"));
+      h("span", { class: "ws-role-chip" }, p.role || DEFAULT_MEMBER_ROLE));
     grid.append(card);
   }
   return grid;
@@ -5575,7 +5585,7 @@ function profileMenu(anchor) {
       avatarEl(p, 72), h("span", { class: "profile-ava-edit" }, ico("smile", 14)));
     el.append(h("div", { class: "profile-top" }, avaWrap,
       h("div", { class: "profile-name-big" }, p.name),
-      h("div", { class: "profile-mail" }, (p.role || "Member") + (teamOn() ? " · " + window.CLOUD.email() : (isAdmin() ? " · admin" : "")))));
+      h("div", { class: "profile-mail" }, (p.role || DEFAULT_MEMBER_ROLE) + (teamOn() ? " · " + window.CLOUD.email() : (isAdmin() ? " · admin" : "")))));
 
     const input = h("input", { type: "text", value: p.name, placeholder: "Your name" });
     const okBtn = h("button", {}, "Save");
