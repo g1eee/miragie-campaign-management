@@ -2817,7 +2817,12 @@ function colFilesCellEl(task, col) {
   const cell = h("div", { class: "cell file-cell", title: "Manage files" });
   if (arr.length) {
     const strip = h("div", { class: "file-strip" });
-    arr.slice(0, 4).forEach(f => strip.append(fileThumb(f)));
+    arr.slice(0, 4).forEach(f => {
+      const t = fileThumb(f);
+      if (fileIsImg(f)) t.addEventListener("click", (e) => { e.stopPropagation(); imageViewer(task, col, f); });
+      else if (f && f.kind === "doc") t.addEventListener("click", (e) => { e.stopPropagation(); docEditor(task, col, f); });
+      strip.append(t);
+    });
     if (arr.length > 4) strip.append(h("span", { class: "file-more" }, "+" + (arr.length - 4)));
     cell.append(strip);
   } else cell.append(h("span", { class: "muted", style: "display:flex;align-items:center;gap:4px" }, ico("paperclip", 14), "Add"));
@@ -2838,9 +2843,13 @@ function colFilesCellEl(task, col) {
         const del = h("button", { class: "row-act", onclick: (e) => { e.stopPropagation(); const a = [...cur]; a.splice(i, 1); setColVal(task, col, a); draw(); softRenderTable(getBoard()); } }); del.append(ico("trash", 13));
         const url = fileUrl(f);
         const isDoc = f && f.kind === "doc";
-        const label = url ? h("a", { href: url, target: "_blank", rel: "noopener", style: "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", onclick: (e) => e.stopPropagation() }, fileName(f))
+        const isImg = fileIsImg(f);
+        const open = isDoc ? (() => { close(); docEditor(task, col, f); })
+                   : isImg ? (() => { close(); imageViewer(task, col, f); })
+                   : null;
+        const label = (url && !isImg) ? h("a", { href: url, target: "_blank", rel: "noopener", style: "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", onclick: (e) => e.stopPropagation() }, fileName(f))
                           : h("span", { style: "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, fileName(f));
-        const rowEl = h("div", { class: "dd-item", style: "gap:6px" + (isDoc ? ";cursor:pointer" : ""), onclick: isDoc ? (() => { close(); docEditor(task, col, f); }) : null }, ico(isDoc ? "doc" : (url ? "link" : "paperclip"), 13), label, del);
+        const rowEl = h("div", { class: "dd-item", style: "gap:6px" + (open ? ";cursor:pointer" : ""), onclick: open }, ico(isDoc ? "doc" : isImg ? "gallery" : (url ? "link" : "paperclip"), 13), label, del);
         list.append(rowEl);
       });
     };
@@ -2874,6 +2883,39 @@ function colFilesCellEl(task, col) {
     opt("folder", "From Box", () => toast("Box — coming soon in demo"));
   }, { minWidth: 230 }));
   return cell;
+}
+
+// --- image viewer (lightbox) for image entries in a Files column ---
+function imageViewer(task, col, entry) {
+  openModal((card, close) => {
+    card.classList.add("img-modal");
+    const board = getBoard();
+    const url = fileUrl(entry), name = fileName(entry);
+
+    const closeBtn = h("button", { class: "icon-btn", onclick: close }); closeBtn.append(ico("x", 16));
+    card.append(h("div", { class: "img-head" },
+      h("div", { class: "img-head-info" },
+        h("span", { class: "file-thumb ft-link", style: "color:#0086c0;background:rgba(0,134,192,.1)" }, ico("gallery", 15)),
+        h("div", { style: "min-width:0" },
+          h("div", { class: "img-name" }, name),
+          h("div", { class: "img-crumb muted" }, board.name + " › " + task.name + " › " + col.name))),
+      closeBtn));
+
+    const stage = h("div", { class: "img-stage" }, h("img", { src: url, alt: name }));
+    card.append(stage);
+
+    const tbar = h("div", { class: "img-tools" });
+    const tool = (icon, label, fn) => { const b = h("button", { class: "img-tool", onclick: fn }, ico(icon, 16), h("span", {}, label)); return b; };
+    tbar.append(
+      tool("open", "Open", () => window.open(url, "_blank", "noopener")),
+      tool("download", "Download", () => { const a = h("a", { href: url, download: name }); document.body.append(a); a.click(); a.remove(); }),
+      tool("trash", "Delete", () => {
+        const arr = (Array.isArray(task.cells[col.id]) ? task.cells[col.id] : []).filter(x => x !== entry);
+        setColVal(task, col, arr); softRenderTable(board); close();
+      }),
+    );
+    card.append(tbar);
+  });
 }
 
 // --- monday-style Doc editor (block-based) opened from a Files "Doc" entry ---
