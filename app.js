@@ -2885,14 +2885,16 @@ function colFilesCellEl(task, col) {
   return cell;
 }
 
-// --- image viewer (lightbox) for image entries in a Files column ---
+// --- image viewer (lightbox) with comments for image entries in a Files column ---
 function imageViewer(task, col, entry) {
+  if (!Array.isArray(entry.comments)) entry.comments = [];
   openModal((card, close) => {
     card.classList.add("img-modal");
     const board = getBoard();
     const url = fileUrl(entry), name = fileName(entry);
+    const persist = () => { const arr = Array.isArray(task.cells[col.id]) ? task.cells[col.id] : []; setColVal(task, col, arr); };
 
-    const closeBtn = h("button", { class: "icon-btn", onclick: close }); closeBtn.append(ico("x", 16));
+    const closeBtn = h("button", { class: "icon-btn", onclick: () => { softRenderTable(board); close(); } }); closeBtn.append(ico("x", 16));
     card.append(h("div", { class: "img-head" },
       h("div", { class: "img-head-info" },
         h("span", { class: "file-thumb ft-link", style: "color:#0086c0;background:rgba(0,134,192,.1)" }, ico("gallery", 15)),
@@ -2901,13 +2903,35 @@ function imageViewer(task, col, entry) {
           h("div", { class: "img-crumb muted" }, board.name + " › " + task.name + " › " + col.name))),
       closeBtn));
 
+    // body = image stage + (toggleable) comments panel
+    const body = h("div", { class: "img-body" });
     const stage = h("div", { class: "img-stage" }, h("img", { src: url, alt: name }));
-    card.append(stage);
+    const cpanel = h("div", { class: "img-comments" });
+    const drawC = () => {
+      cpanel.replaceChildren();
+      cpanel.append(h("div", { class: "img-c-head" }, h("b", {}, "Comments")));
+      const ta = h("textarea", { class: "img-c-input", placeholder: "Write a comment…" });
+      const send = h("button", { class: "btn-primary", style: "align-self:flex-end;padding:6px 14px", onclick: () => { const v = ta.value.trim(); if (!v) return; entry.comments.push({ by: state.user, text: v, at: Date.now() }); persist(); ta.value = ""; drawC(); } }, "Comment");
+      ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send.click(); } });
+      cpanel.append(h("div", { class: "img-c-compose" }, ta, send));
+      if (!entry.comments.length) cpanel.append(h("div", { class: "muted", style: "padding:10px 2px;font-size:13px" }, "No comments yet. Be the first."));
+      for (const c of entry.comments) {
+        const p = personById(c.by) || me();
+        const del = h("button", { class: "row-act", title: "Delete", onclick: () => { entry.comments = entry.comments.filter(x => x !== c); persist(); drawC(); } }); del.append(ico("trash", 13));
+        cpanel.append(h("div", { class: "img-c-item" },
+          h("div", { class: "img-c-top" }, avatarEl(p, 24), h("b", { style: "flex:1" }, p.name), h("time", { class: "muted" }, relTime(c.at)), del),
+          h("div", { class: "img-c-text" }, c.text)));
+      }
+    };
+    drawC();
+    body.append(stage, cpanel);
+    card.append(body);
 
     const tbar = h("div", { class: "img-tools" });
-    const tool = (icon, label, fn) => { const b = h("button", { class: "img-tool", onclick: fn }, ico(icon, 16), h("span", {}, label)); return b; };
+    const tool = (icon, label, fn, badge) => { const b = h("button", { class: "img-tool", onclick: fn }, ico(icon, 16), h("span", {}, label)); if (badge) b.append(h("span", { class: "count-badge" }, badge)); return b; };
+    const commentBtn = tool("chat", "Comment", () => card.classList.toggle("with-comments"), entry.comments.length || null);
     tbar.append(
-      tool("open", "Open", () => window.open(url, "_blank", "noopener")),
+      commentBtn,
       tool("download", "Download", () => { const a = h("a", { href: url, download: name }); document.body.append(a); a.click(); a.remove(); }),
       tool("trash", "Delete", () => {
         const arr = (Array.isArray(task.cells[col.id]) ? task.cells[col.id] : []).filter(x => x !== entry);
