@@ -479,17 +479,17 @@ input, textarea, select {
 .cell.check-col { justify-content: center; }
 
 /* Freeze pane: checkbox + Item (name) columns pinned with position:sticky.
-   Sticky (unlike a JS translateX) does not inflate the horizontal scroll width. */
+   Sticky (unlike a JS translateX) does not inflate the horizontal scroll width.
+   Offsets must match the grid tracks exactly (check = 36px) or scrolling cells
+   bleed through the gap. */
 .board-canvas .cell.check-col,
-.board-canvas .cell.name-col { position: sticky; z-index: 2; background: inherit; }
-.board-canvas .cell.check-col { left: 0; }
-.board-canvas .cell.name-col { left: 36px; }
-/* extend the frozen checkbox cell left to cover the canvas's left gap (no bleed);
-   group color bar sits at the card edge, checkbox/content align with the header */
-.board-canvas .cell.check-col { margin-left: -16px; padding-left: 16px; border-left: 4px solid var(--gcolor, #579bfc); }
-.board-canvas .cell.name-col { box-shadow: 6px 0 8px -6px rgba(0, 0, 0, .14); }
+.board-canvas .cell.name-col { position: sticky; z-index: 2; background: var(--bg); }
+.board-canvas .cell.check-col { left: 0; border-left: 4px solid var(--gcolor, #579bfc); }
+.board-canvas .cell.name-col { left: 36px; box-shadow: 6px 0 8px -6px rgba(0, 0, 0, .14); }
+/* sticky cells must repaint the row's background so columns don't show through */
+.g-row.selected .cell.check-col, .g-row.selected .cell.name-col { background: var(--primary-soft); }
 .board-canvas .head-row .cell.check-col,
-.board-canvas .head-row .cell.name-col { z-index: 4; }
+.board-canvas .head-row .cell.name-col { z-index: 4; background: var(--bg); }
 /* group title bar stays pinned too */
 .board-canvas .group-header { position: sticky; left: 0; z-index: 3; background: var(--bg); width: max-content; }
 /* add-task row spans only 2 cols — no freeze edge shadow needed there */
