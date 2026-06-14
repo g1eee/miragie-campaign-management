@@ -5294,9 +5294,25 @@ function richEditor(onPost) {
   area.addEventListener("focus", () => card.classList.add("active"));
   area.addEventListener("blur", () => { if (!(area.textContent || "").trim() && !/<img/i.test(area.innerHTML)) { card.classList.remove("active"); toolbar.classList.add("hidden"); fmtBtn.classList.remove("on"); } });
 
+  // @ mention — list workspace members; pick inserts "@Name"
+  const insertMention = (p, stripAt) => {
+    area.focus();
+    if (stripAt) { try { document.execCommand("delete", false); } catch (e) {} }
+    cmd("insertText", "@" + p.name + " ");
+  };
+  const mentionPicker = (stripAt) => {
+    if (!state.people.length) return;
+    openDropdown(area, (el, close) => {
+      el.append(h("div", { class: "dd-title" }, "Mention someone"));
+      for (const p of state.people) el.append(h("div", { class: "dd-item", onclick: () => { insertMention(p, stripAt); close(); } },
+        avatarEl(p, 22), h("span", { style: "flex:1" }, p.name)));
+    }, { minWidth: 220 });
+  };
+  area.addEventListener("input", (e) => { if (e.data === "@") mentionPicker(true); });
+
   const footer = h("div", { class: "rich-footer" },
     h("div", { class: "rich-actions" },
-      actBtn("at", "Mention", () => cmd("insertText", "@")),
+      actBtn("at", "Mention", () => mentionPicker(false)),
       actBtn("paperclip", "Attach image", () => fileIn.click()),
       actBtn("smile", "Emoji", (ev) => emojiPicker(ev.currentTarget, (em) => cmd("insertText", em))),
       fmtBtn),
