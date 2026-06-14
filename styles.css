@@ -1194,7 +1194,8 @@ input, textarea, select {
 [data-theme="dark"] .wh-banner { background: linear-gradient(120deg, #18351f 0%, #15233f 60%, #261a40 100%); }
 
 .wh-body { padding: 0 40px 40px; max-width: 1180px; }
-.wh-head { display: flex; align-items: center; gap: 18px; margin-top: -22px; }
+.wh-head { display: flex; align-items: flex-start; gap: 18px; margin-top: -22px; }
+.wh-actions { margin-top: 2px; }
 .wh-logo {
   width: 92px;
   height: 92px;
