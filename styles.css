@@ -1196,7 +1196,7 @@ input, textarea, select {
 .wh-body { padding: 0 40px 40px; max-width: 1180px; }
 .wh-head { display: flex; align-items: flex-start; gap: 18px; margin-top: -22px; }
 /* drop both rows below the cover; name +6px extra so its cap-height lines up with the button text */
-.wh-actions { margin-top: 24px; }
+.wh-actions { margin-top: 30px; }
 .wh-titles { margin-top: 30px; }
 .wh-logo {
   width: 92px;
