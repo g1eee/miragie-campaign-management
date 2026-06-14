@@ -383,7 +383,7 @@ input, textarea, select {
 
 /* ============ Groups / Table ============ */
 
-.board-canvas { padding: 4px 32px 140px 0; flex: 1; }
+.board-canvas { padding: 4px 32px 140px 16px; flex: 1; }
 /* single scroll container so sticky (frozen) columns pin correctly */
 .board-canvas.h-scroll { overflow: auto; min-height: 0; min-width: 0; }
 .group-wrap { min-width: 940px; }
@@ -419,7 +419,6 @@ input, textarea, select {
 
 .g-table {
   border-radius: 8px;
-  overflow: hidden;
   background: var(--bg);
   box-shadow: var(--shadow-sm);
 }
@@ -457,13 +456,16 @@ input, textarea, select {
   min-width: 0;
   position: relative;
 }
-.cell.check-col { border-left: 4px solid var(--gcolor, #579bfc); justify-content: center; }
+.cell.check-col { justify-content: center; }
 
 /* Freeze pane: checkbox + Item (name) columns are kept in place via JS transform
    (sticky-on-grid is unreliable across browsers). They need to paint above the
    scrolling cells with an opaque background. */
 .board-canvas .cell.check-col,
 .board-canvas .cell.name-col { position: relative; z-index: 2; background: inherit; will-change: transform; }
+/* extend the frozen checkbox cell left to cover the canvas's left gap (no bleed);
+   group color bar sits at the card edge, checkbox/content align with the header */
+.board-canvas .cell.check-col { margin-left: -16px; padding-left: 16px; border-left: 4px solid var(--gcolor, #579bfc); }
 .board-canvas .cell.name-col { box-shadow: 6px 0 8px -6px rgba(0, 0, 0, .14); }
 .board-canvas .head-row .cell.check-col,
 .board-canvas .head-row .cell.name-col { z-index: 4; }
