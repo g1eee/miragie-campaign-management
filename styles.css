@@ -85,9 +85,8 @@ input, textarea, select {
 .tb-left { display: flex; align-items: center; min-width: 220px; }
 
 .logo { display: flex; align-items: center; gap: 8px; user-select: none; color: var(--text); }
-/* logo.png is a square with whitespace — crop to the centered horizontal band */
-.logo-img { width: 132px; height: 38px; object-fit: cover; display: block; }
-.logo-text { font-size: 16px; color: var(--text); }
+/* wordmark — rounded geometric font (Quicksand) */
+.logo-text { font-family: "Quicksand", "Poppins", sans-serif; font-weight: 600; font-size: 22px; letter-spacing: .5px; color: var(--text); }
 .logo-text b { font-weight: 800; }
 .logo-text em { font-style: normal; font-size: 11px; color: var(--text-2); margin-left: 4px; }
 
