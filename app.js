@@ -230,6 +230,7 @@ const ui = {
   sideSearch: "",
   drag: null,            // {type:'task'|'card'|'chip', taskId}
   colDrag: null,         // {boardId, colId} — custom column reorder
+  coverEditing: false,   // workspace cover reposition mode
   home: false,           // workspace home view
   homeTab: "content",    // recents | content | collaborators | permissions
   whSel: new Set(),      // selected asset (board) ids in content tab
@@ -4118,25 +4119,49 @@ function galleryViewEl(board) {
 function workspaceHomeEl() {
   const w = getWorkspace();
   const root = h("div", { class: "view-root wh" });
-  // ---- cover banner (per-workspace upload, falls back to cover.jpg / gradient)
-  const banner = h("div", { class: "wh-banner" });
-  if (w.cover) banner.style.backgroundImage = `url("${w.cover}")`;
+  // ---- cover banner (per-workspace upload + drag-to-reposition; falls back to cover.jpg / gradient)
+  const posY = (w.coverPos && typeof w.coverPos.y === "number") ? w.coverPos.y : 50;
+  const banner = h("div", { class: "wh-banner" + (ui.coverEditing && w.cover ? " repositioning" : "") });
+  if (w.cover) { banner.style.backgroundImage = `url("${w.cover}")`; banner.style.backgroundPosition = `center ${posY}%`; }
   const coverIn = h("input", { type: "file", accept: "image/*", style: "display:none" });
   coverIn.addEventListener("change", () => {
     const f = coverIn.files[0]; if (!f) return;
-    scaleImageWide(f, 1600, (url) => { w.cover = url; save(); render(); toast("Cover updated"); });
+    scaleImageWide(f, 1600, (url) => { w.cover = url; w.coverPos = { y: 50 }; save(); render(); toast("Cover updated"); });
     coverIn.value = "";
   });
-  const coverBtn = h("button", { class: "wh-cover-edit", title: "Change cover" }, ico("camera", 15), h("span", {}, "Edit cover"));
-  coverBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (w.cover) openDropdown(coverBtn, (el, close) => {
-      el.append(ddItem("camera", "Replace cover", () => { close(); coverIn.click(); }));
-      el.append(ddItem("trash", "Remove cover", () => { close(); w.cover = null; save(); render(); toast("Cover removed"); }, "danger"));
-    }, { alignRight: true, minWidth: 180 });
-    else coverIn.click();
-  });
-  banner.append(coverBtn, coverIn);
+
+  if (ui.coverEditing && w.cover) {
+    banner.append(h("div", { class: "wh-cover-hint" }, ico("move", 15), h("span", {}, "Drag the image up / down to reposition")));
+    const doneBtn = h("button", { class: "wh-cover-edit wh-cover-done", onclick: (e) => { e.stopPropagation(); ui.coverEditing = false; save(); renderMain(); toast("Cover saved"); } }, ico("check", 15), h("span", {}, "Done"));
+    banner.append(doneBtn);
+    // vertical drag → background-position-y %
+    banner.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      const startY = e.clientY, start = (w.coverPos && typeof w.coverPos.y === "number") ? w.coverPos.y : 50;
+      const move = (ev) => {
+        let p = start - ((ev.clientY - startY) / banner.offsetHeight) * 100;
+        p = Math.max(0, Math.min(100, p));
+        w.coverPos = { y: p };
+        banner.style.backgroundPosition = `center ${p}%`;
+      };
+      const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); save(); };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    });
+  } else {
+    const coverBtn = h("button", { class: "wh-cover-edit", title: "Change cover" }, ico("camera", 15), h("span", {}, "Edit cover"));
+    coverBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (w.cover) openDropdown(coverBtn, (el, close) => {
+        el.append(ddItem("camera", "Replace cover", () => { close(); coverIn.click(); }));
+        el.append(ddItem("move", "Reposition", () => { close(); ui.coverEditing = true; renderMain(); }));
+        el.append(ddItem("trash", "Remove cover", () => { close(); w.cover = null; w.coverPos = null; save(); render(); toast("Cover removed"); }, "danger"));
+      }, { alignRight: true, minWidth: 180 });
+      else coverIn.click();
+    });
+    banner.append(coverBtn);
+  }
+  banner.append(coverIn);
   root.append(banner);
   // hero portrait mirrors the current user's profile character; updates when you change it
   const heroOn = !!(me().avatar || WH_HERO);
