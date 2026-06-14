@@ -1947,7 +1947,9 @@ function sortPanel(anchor) {
 function hidePanel(anchor, board) {
   openDropdown(anchor, (el) => {
     el.append(h("div", { class: "dd-title" }, "Display columns"));
-    for (const c of COLUMNS) {
+    const items = [...COLUMNS.map(c => ({ id: c.id, label: colLabel(board, c) })),
+                   ...board.columns.map(c => ({ id: c.id, label: c.name }))];
+    for (const c of items) {
       const cb = h("input", { type: "checkbox" });
       cb.checked = !board.hidden.includes(c.id);
       const row = h("label", { class: "dd-check" }, cb, h("span", {}, c.label));
@@ -1978,7 +1980,8 @@ function orderedCols(board) {
   board.colOrder = order;
   const out = [];
   for (const id of order) {
-    if (sysMap[id]) { if (!board.hidden.includes(id)) out.push({ kind: "sys", id, w: sysMap[id].w, sys: sysMap[id] }); }
+    if (board.hidden.includes(id)) continue;
+    if (sysMap[id]) out.push({ kind: "sys", id, w: sysMap[id].w, sys: sysMap[id] });
     else if (customMap[id]) out.push({ kind: "custom", id, w: customMap[id].width || 150, col: customMap[id] });
   }
   return out;
@@ -2381,6 +2384,7 @@ function colMenu(anchor, board, col) {
       el.append(it);
     }
     el.append(ddItem("plus", "Add column to the right", () => { close(); addColumnMenu(anchor, board, board.columns.indexOf(col) + 1); }));
+    el.append(ddItem("eyeOff", "Hide column", () => { close(); if (!board.hidden.includes(col.id)) board.hidden.push(col.id); save(); render(); }));
     el.append(h("hr", { class: "dd-sep" }), ddItem("trash", "Delete column", () => { close(); deleteColumn(board, col); }, "danger"));
   }, { minWidth: 210 });
 }
