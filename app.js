@@ -279,13 +279,18 @@ function applyRemoteState(data) {
   render();
 }
 
+let remoteFetchTimer = null;
 function ensureTeamSubscription() {
   if (teamChannel || !cloudOn() || !window.CLOUD.user()) return;
-  const ch = window.CLOUD.subscribeTeam((data) => {
-    if (!data || data._writer === CLIENT_ID) return;   // ignore our own echo
-    applyRemoteState(data);
+  teamChannel = window.CLOUD.subscribeTeam(() => {
+    // a teammate saved — pull the FULL fresh state (avoids dropped/truncated payloads)
+    clearTimeout(remoteFetchTimer);
+    remoteFetchTimer = setTimeout(async () => {
+      const data = await window.CLOUD.loadTeam();
+      if (!data || data._writer === CLIENT_ID) return;   // ignore our own echo
+      applyRemoteState(data);
+    }, 250);
   });
-  teamChannel = ch;
 }
 
 function cloudOn() { return typeof window !== "undefined" && window.CLOUD && window.CLOUD.available(); }
@@ -3320,9 +3325,9 @@ function colConnectCellEl(board, task, col) {
   const links = getConnectLinks(task, col);
   const cell = h("div", { class: "cell connect-cell", title: "Link items" });
   if (links.length) {
-    const wrap = h("span", { style: "display:flex;gap:4px;flex-wrap:nowrap;overflow:hidden" });
-    links.slice(0, 3).forEach(l => wrap.append(h("span", { class: "dd-tag", style: "background:#a25ddc" }, ico("link", 11), h("span", {}, l.name))));
-    if (links.length > 3) wrap.append(h("span", { class: "muted", style: "font-size:11px" }, "+" + (links.length - 3)));
+    const wrap = h("span", { class: "connect-tags" });
+    wrap.append(h("span", { class: "dd-tag", style: "background:#a25ddc" }, ico("link", 11), h("span", {}, links[0].name)));
+    if (links.length > 1) wrap.append(h("span", { class: "connect-more" }, "+" + (links.length - 1)));
     cell.append(wrap);
   } else {
     cell.append(h("span", { class: "muted", style: "display:flex;align-items:center;gap:4px" }, ico("link", 14), "Connect"));
@@ -3496,19 +3501,43 @@ function colMirrorCellEl(board, task, col) {
   }
   const links = getConnectLinks(task, connCol);
   if (!links.length) { cell.append(h("span", { class: "muted" }, "—")); return cell; }
-  const wrap = h("div", { class: "mirror-wrap" });
+  const connBoard = state.boards.find(b => b.id === connCol.connectBoardId) || (links[0] && state.boards.find(b => b.id === links[0].boardId));
+  const labelType = isLabelMirror(connBoard, col.mirrorColId);
+
   if (col.mirrorSummary === "done" && col.mirrorColId === "status") {
     let done = 0, total = 0;
     for (const lk of links) { const loc = locateTask(lk.taskId); if (!loc) continue; total++; if (taskIsDone(loc.task)) done++; }
-    wrap.append(h("span", { class: "mirror-pill", style: `background:${done === total && total ? "#00c875" : "#fdab3d"}` }, `${done}/${total} done`));
+    cell.append(h("span", { class: "mirror-pill", style: `background:${done === total && total ? "#00c875" : "#fdab3d"}` }, `${done}/${total} done`));
+  } else if (labelType) {
+    // stacked colour bar — one segment per connected item's label colour
+    const bar = h("div", { class: "mirror-bar" });
+    for (const lk of links) {
+      const loc = locateTask(lk.taskId); if (!loc) continue;
+      bar.append(h("span", { class: "mirror-seg", style: `background:${mirrorLabelColor(loc.task, col.mirrorColId, loc.board) || "#c4c4c4"}` }));
+    }
+    cell.append(bar);
   } else {
+    const wrap = h("div", { class: "mirror-wrap" });
     for (const lk of links) {
       const loc = locateTask(lk.taskId); if (!loc) continue;
       mirrorValueEls(loc.task, col.mirrorColId, loc.board).forEach(n => wrap.append(n));
     }
+    cell.append(wrap);
   }
-  cell.append(wrap);
   return cell;
+}
+
+function isLabelMirror(connBoard, colId) {
+  if (colId === "status" || colId === "priority") return true;
+  const cc = (connBoard && connBoard.columns || []).find(c => c.id === colId);
+  return !!(cc && LABEL_TYPES.includes(cc.type));
+}
+function mirrorLabelColor(lt, colId, lb) {
+  if (colId === "status") return statusOf(lt).color;
+  if (colId === "priority") return prioOf(lt).color;
+  const cc = (lb.columns || []).find(c => c.id === colId);
+  if (cc && LABEL_TYPES.includes(cc.type)) { const lab = (cc.labels || []).find(l => l.id === (lt.cells ? lt.cells[colId] : undefined)); return lab ? lab.color : "#c4c4c4"; }
+  return "#c4c4c4";
 }
 
 function mirrorSettingsModal(board, col) {

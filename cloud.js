@@ -107,8 +107,10 @@
       try {
         const ch = client
           .channel("team_state_main")
+          // just a signal — the app re-fetches the full row (realtime payloads can be
+          // dropped/truncated when the JSON blob is large, so we don't trust payload.new)
           .on("postgres_changes", { event: "*", schema: "public", table: TEAM, filter: "id=eq.main" },
-            (payload) => { const d = payload && payload.new && payload.new.data; if (d) cb(d); })
+            () => cb())
           .subscribe();
         return ch;
       } catch (e) { console.warn("team subscribe", e); return null; }
