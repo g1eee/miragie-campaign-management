@@ -5164,7 +5164,11 @@ function galleryViewEl(board) {
       h("div", { class: "muted" }, "Upload images to an item's Files, a Files column, or an update — they'll appear here.")));
     return root;
   }
-  root.append(h("div", { class: "gallery-count" }, `Showing ${imgs.length} image${imgs.length > 1 ? "s" : ""}`));
+  const dlAll = h("button", { class: "btn-invite gallery-dlall" }, ico("download", 15), h("span", {}, "Download all (.zip)"));
+  dlAll.addEventListener("click", () => downloadGalleryZip(imgs, board.name, dlAll));
+  root.append(h("div", { class: "gallery-head" },
+    h("div", { class: "gallery-count" }, `Showing ${imgs.length} image${imgs.length > 1 ? "s" : ""}`),
+    imgs.length > 1 ? dlAll : null));
   const list = h("div", { class: "gallery-list" });
   for (const im of imgs) {
     const thumb = h("button", { class: "gfile-thumb", title: "Preview", onclick: () => imageLightbox(im) });
@@ -5181,6 +5185,52 @@ function galleryViewEl(board) {
   }
   root.append(list);
   return root;
+}
+
+function extFromUrl(url) {
+  const m = /^data:image\/([a-z0-9.+-]+)/i.exec(url || "");
+  if (m) return "." + m[1].replace("jpeg", "jpg").split("+")[0];
+  const e = /\.([a-z0-9]+)(?:\?|#|$)/i.exec(url || "");
+  return e ? "." + e[1] : ".png";
+}
+
+// bundle every gallery image into a single .zip download
+async function downloadGalleryZip(imgs, boardName, btn) {
+  if (!window.JSZip) { toast("Zip library still loading — try again in a moment"); return; }
+  const label = btn && btn.querySelector("span");
+  const orig = label && label.textContent;
+  if (label) label.textContent = "Zipping…";
+  if (btn) btn.style.pointerEvents = "none";
+  try {
+    const zip = new window.JSZip();
+    const used = {};
+    let i = 0;
+    for (const im of imgs) {
+      i++;
+      let base = (im.name || ("image" + i)).replace(/[\\/:*?"<>|]+/g, "_");
+      if (!/\.[a-z0-9]+$/i.test(base)) base += extFromUrl(im.url);
+      let fname = base;
+      if (used[fname]) fname = i + "-" + base;   // avoid collisions
+      used[fname] = true;
+      try {
+        if ((im.url || "").startsWith("data:")) {
+          zip.file(fname, im.url.split(",")[1] || "", { base64: true });
+        } else {
+          const r = await fetch(im.url); zip.file(fname, await r.arrayBuffer());
+        }
+      } catch (e) { /* skip unreadable file */ }
+    }
+    const blob = await zip.generateAsync({ type: "blob" });
+    const a = h("a", { href: URL.createObjectURL(blob), download: (boardName || "images").replace(/[\\/:*?"<>|]+/g, "_") + "-images.zip" });
+    document.body.append(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    toast(`Downloaded ${imgs.length} images as zip`);
+  } catch (e) {
+    toast("Zip failed: " + (e && e.message || e));
+  } finally {
+    if (label && orig) label.textContent = orig;
+    if (btn) btn.style.pointerEvents = "";
+  }
 }
 
 // simple full-screen image preview with download
