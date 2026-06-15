@@ -1375,6 +1375,8 @@ function renderTopbar() {
   themeBtn.replaceChildren(ico(state.theme === "light" ? "moon" : "sun", 17));
   const bell = q("#bell-btn");
   bell.replaceChildren(ico("bell", 17));
+  const unread = unreadNotifCount();
+  if (unread) bell.append(h("span", { class: "notif-badge" }, unread > 9 ? "9+" : String(unread)));
   const meBtn = q("#me-btn");
   meBtn.replaceChildren(avatarEl(me(), 30));
   renderGreeting();
@@ -5843,6 +5845,132 @@ function profileMenu(anchor) {
   }, { alignRight: true, minWidth: 280 });
 }
 
+/* ---------------- Notifications ---------------- */
+
+// Build the live notification feed from real board data:
+//  • comments posted by someone other than you   → "Mentioned"
+//  • tasks you own (assigned + overdue)           → "Assigned to me"
+function collectNotifs() {
+  const out = [];
+  const my = state.user;
+  for (const b of state.boards) {
+    for (const g of (b.groups || [])) {
+      for (const t of g.tasks) {
+        for (const u of (t.updates || [])) {
+          if (u.by && u.by !== my) {
+            out.push({ id: "c" + u.id, type: "mention", who: u.by, verb: "commented on",
+              task: t, board: b, at: u.at || t.updatedAt, preview: (u.text || "").trim().slice(0, 90) });
+          }
+        }
+        if ((t.owners || []).includes(my)) {
+          out.push({ id: "a" + t.id, type: "assigned", who: t.updatedBy || b.creator || my,
+            verb: "assigned you to", task: t, board: b, at: t.updatedAt || t.createdAt });
+          if (t.due && t.status !== "done" && t.due < todayISO()) {
+            out.push({ id: "o" + t.id, type: "assigned", system: true, verb: "is overdue",
+              task: t, board: b, at: Date.parse(t.due) || t.updatedAt });
+          }
+        }
+      }
+    }
+  }
+  out.sort((x, y) => (y.at || 0) - (x.at || 0));
+  return out;
+}
+
+function notifReadSet() { if (!Array.isArray(state.notifRead)) state.notifRead = []; return state.notifRead; }
+function notifIsRead(id) { return notifReadSet().includes(id); }
+function markNotifRead(id) { const s = notifReadSet(); if (!s.includes(id)) { s.push(id); save(); } }
+function markAllNotifRead(list) { const s = notifReadSet(); for (const n of list) if (!s.includes(n.id)) s.push(n.id); save(); }
+function unreadNotifCount() { return collectNotifs().filter(n => !notifIsRead(n.id)).length; }
+
+function notifAgo(ts) {
+  if (!ts) return "";
+  const s = (Date.now() - ts) / 1000;
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + "m ago";
+  if (s < 86400) return Math.floor(s / 3600) + "h ago";
+  const d = Math.floor(s / 86400);
+  if (d < 7) return d + "d ago";
+  return fmtDate(new Date(ts).toISOString().slice(0, 10));
+}
+const notifIsToday = (ts) => new Date(ts).toDateString() === new Date().toDateString();
+
+function notifRow(n, close) {
+  const read = notifIsRead(n.id);
+  const actor = n.system
+    ? h("span", { class: "notif-sys-ico" + (n.verb.includes("overdue") ? " danger" : "") },
+        ico(n.verb.includes("overdue") ? "clock" : "bell", 18))
+    : avatarEl(personById(n.who) || me(), 36);
+  const who = n.system ? "" : (personById(n.who)?.name || "Someone");
+  const text = h("div", { class: "notif-text" },
+    who ? h("b", {}, who + " ") : null,
+    h("span", {}, n.verb + " "),
+    h("b", { class: "notif-link" }, n.task.name));
+  const body = h("div", { class: "notif-body" }, text,
+    n.preview ? h("div", { class: "notif-preview" }, "“" + n.preview + "”") : null,
+    h("div", { class: "notif-meta" }, n.board.name + " · " + notifAgo(n.at)));
+  return h("div", {
+    class: "notif-item" + (read ? "" : " unread"),
+    onclick: () => { markNotifRead(n.id); ui.panel = n.task.id; renderPanel(); renderTopbar(); close(); }
+  }, actor, body, read ? null : h("span", { class: "notif-dot" }));
+}
+
+function openNotifPanel(anchor) {
+  ui.notif = ui.notif || { tab: "all", q: "", unread: false };
+  openDropdown(anchor, (el, close) => {
+    el.classList.add("notif-pop");
+    const all = collectNotifs();
+
+    const markAll = h("button", { class: "notif-act", title: "Mark all as read",
+      onclick: () => { markAllNotifRead(all); renderList(); renderTopbar(); } }, ico("check", 17));
+    const head = h("div", { class: "notif-head" },
+      h("div", { class: "notif-title" }, "Notifications"),
+      h("div", { class: "notif-head-actions" }, markAll,
+        h("button", { class: "notif-act", title: "Close", onclick: close }, ico("x", 16))));
+
+    const tabsWrap = h("div", { class: "notif-tabs" });
+    const tabBtns = {};
+    for (const [id, label] of [["all", "All"], ["mention", "Mentioned"], ["assigned", "Assigned to me"]]) {
+      const btn = h("button", { class: "notif-tab" + (ui.notif.tab === id ? " active" : ""),
+        onclick: () => { ui.notif.tab = id; for (const k in tabBtns) tabBtns[k].classList.toggle("active", k === id); renderList(); } }, label);
+      tabBtns[id] = btn; tabsWrap.append(btn);
+    }
+
+    const search = h("input", { class: "notif-search-input", value: ui.notif.q,
+      placeholder: "Search notifications by people, boards, and more...",
+      oninput: (e) => { ui.notif.q = e.target.value; renderList(); } });
+    const toggle = h("div", { class: "toggle-pill" + (ui.notif.unread ? " on" : ""), title: "Unread only" });
+    toggle.addEventListener("click", () => { ui.notif.unread = !ui.notif.unread; toggle.classList.toggle("on", ui.notif.unread); renderList(); });
+    const filterRow = h("div", { class: "notif-filterrow" },
+      h("div", { class: "notif-search" }, ico("search", 15), search),
+      h("label", { class: "notif-unread-lbl" }, toggle, h("span", {}, "Unread only")));
+
+    const listWrap = h("div", { class: "notif-list" });
+    function renderList() {
+      listWrap.replaceChildren();
+      let items = all;
+      if (ui.notif.tab === "mention") items = items.filter(n => n.type === "mention");
+      else if (ui.notif.tab === "assigned") items = items.filter(n => n.type === "assigned");
+      if (ui.notif.unread) items = items.filter(n => !notifIsRead(n.id));
+      const qy = ui.notif.q.trim().toLowerCase();
+      if (qy) items = items.filter(n =>
+        (n.task.name + " " + n.board.name + " " + (personById(n.who)?.name || "") + " " + (n.preview || "")).toLowerCase().includes(qy));
+      if (!items.length) {
+        listWrap.append(h("div", { class: "notif-empty" }, ico("bell", 30), h("div", {}, "You’re all caught up")));
+        return;
+      }
+      let lastDay = null;
+      for (const n of items) {
+        const day = notifIsToday(n.at) ? "Today" : "Earlier";
+        if (day !== lastDay) { listWrap.append(h("div", { class: "notif-day" }, day)); lastDay = day; }
+        listWrap.append(notifRow(n, close));
+      }
+    }
+    renderList();
+    el.append(head, tabsWrap, filterRow, listWrap);
+  }, { alignRight: true, minWidth: 440 });
+}
+
 /* ---------------- Topbar wiring (static) ---------------- */
 
 function wireTopbar() {
@@ -5852,11 +5980,7 @@ function wireTopbar() {
     render();
   });
 
-  q("#bell-btn").addEventListener("click", (e) => {
-    openDropdown(e.currentTarget, (el) => {
-      el.append(h("div", { class: "dd-item disabled" }, "🎉 No new notifications"));
-    }, { alignRight: true, minWidth: 220 });
-  });
+  q("#bell-btn").addEventListener("click", (e) => openNotifPanel(e.currentTarget));
 
   q("#me-btn").addEventListener("click", (e) => profileMenu(e.currentTarget));
 
