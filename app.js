@@ -506,6 +506,7 @@ function migrate() {
   }
   if (!state.wfFired) state.wfFired = {};
   if (!Array.isArray(state.workflows)) state.workflows = [];
+  if (!Array.isArray(state.feedback)) state.feedback = [];
   if (!Array.isArray(state.statuses) || !state.statuses.length) state.statuses = JSON.parse(JSON.stringify(DEFAULT_STATUSES));
   if (!Array.isArray(state.priorities) || !state.priorities.length) state.priorities = JSON.parse(JSON.stringify(DEFAULT_PRIORITIES));
   STATUSES = state.statuses;
@@ -4646,8 +4647,11 @@ function workspaceHomeEl() {
   const membersBtn = h("button", { class: "btn-invite" });
   membersBtn.append(ico("person", 15), h("span", {}, "Members"));
   membersBtn.addEventListener("click", (e) => peopleManager(e.currentTarget));
+  const fbBtn = whAction("chat", "Feedback", () => feedbackModal());
+  const openFb = (state.feedback || []).filter(f => f.status === "open").length;
+  if (isAdmin() && openFb) fbBtn.append(h("span", { class: "count-badge" }, openFb));
   const actions = h("div", { class: "wh-actions" },
-    whAction("chat", "Feedback", () => toast("Thanks for the feedback! (demo)")),
+    fbBtn,
     whAction("agent", "Agents", () => toast("Agents — coming soon in demo")),
     membersBtn);
 
@@ -4805,6 +4809,67 @@ function whCollaborators() {
     grid.append(card);
   }
   return grid;
+}
+
+/* ---- Feedback / bug reports (shared: admin sees every member's report) ---- */
+function feedbackModal() {
+  openModal((card, close) => {
+    card.classList.add("fb-modal");
+    const closeBtn = h("button", { class: "icon-btn", onclick: close }); closeBtn.append(ico("x", 16));
+    card.append(h("div", { class: "modal-head" }, h("div", { class: "ip-title", style: "flex:1" }, "Feedback & bug reports"), closeBtn));
+    const bodyEl = h("div", { class: "modal-body" });
+
+    // ---- composer
+    let kind = "bug";
+    const kindBtns = {};
+    const kindRow = h("div", { class: "fb-kind" });
+    for (const [k, label, emo] of [["bug", "Bug", "🐞"], ["idea", "Idea", "💡"]]) {
+      const b = h("button", { class: "fb-kind-btn" + (kind === k ? " active" : ""),
+        onclick: () => { kind = k; for (const x in kindBtns) kindBtns[x].classList.toggle("active", x === k); } }, emo + " " + label);
+      kindBtns[k] = b; kindRow.append(b);
+    }
+    const ta = h("textarea", { class: "fb-text", placeholder: "Describe the bug or idea — what happened, and what you expected." });
+    ta.addEventListener("keydown", (e) => e.stopPropagation());
+    const send = h("button", { class: "btn-primary" }, "Send report");
+    send.addEventListener("click", () => {
+      const text = ta.value.trim();
+      if (!text) { ta.focus(); return; }
+      state.feedback.unshift({ id: uid(), by: state.user, kind, text, at: Date.now(), status: "open" });
+      save(); ta.value = ""; toast("Report sent — thanks!"); drawList();
+    });
+    bodyEl.append(h("div", { class: "fb-composer" }, kindRow, ta, h("div", { class: "fb-send-row" }, send)));
+
+    // ---- list (admin: everyone's; member: own only)
+    const listWrap = h("div", { class: "fb-list" });
+    function drawList() {
+      listWrap.replaceChildren();
+      const admin = isAdmin();
+      const items = (state.feedback || []).filter(f => admin || f.by === state.user);
+      listWrap.append(h("div", { class: "fb-list-head" }, admin ? "All reports" : "Your reports",
+        h("span", { class: "muted" }, " · " + items.length)));
+      if (!items.length) { listWrap.append(h("div", { class: "fb-empty" }, "No reports yet.")); return; }
+      for (const f of items) {
+        const who = personById(f.by);
+        const row = h("div", { class: "fb-item" + (f.status === "resolved" ? " resolved" : "") },
+          h("span", { class: "fb-tag fb-" + f.kind }, f.kind === "bug" ? "🐞 Bug" : "💡 Idea"),
+          h("div", { class: "fb-item-body" },
+            h("div", { class: "fb-item-text" }, f.text),
+            h("div", { class: "fb-item-meta" }, (who ? who.name : "Member") + " · " + notifAgo(f.at) + (f.status === "resolved" ? " · resolved" : ""))));
+        if (admin) {
+          const toggle = h("button", { class: "row-act", title: f.status === "resolved" ? "Reopen" : "Mark resolved",
+            onclick: () => { f.status = f.status === "resolved" ? "open" : "resolved"; save(); drawList(); } }, ico("check", 15));
+          const del = h("button", { class: "row-act", title: "Delete",
+            onclick: () => { state.feedback = state.feedback.filter(x => x.id !== f.id); save(); drawList(); } }, ico("trash", 14));
+          row.append(h("div", { class: "fb-item-acts" }, toggle, del));
+        }
+        listWrap.append(row);
+      }
+    }
+    drawList();
+    bodyEl.append(listWrap);
+    card.append(bodyEl);
+    setTimeout(() => ta.focus(), 0);
+  });
 }
 
 /* ---- Feature 3: recents (simple list + favorite star) ---- */

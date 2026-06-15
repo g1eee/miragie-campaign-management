@@ -2773,3 +2773,34 @@ input, textarea, select { border-radius: 10px; }
 .pm-invite-ws { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .pm-ws-lbl { font-size: 12px; color: var(--text-2); flex: none; }
 .pm-invite-ws .pm-invite-role { flex: 1; justify-content: space-between; }
+
+/* ============ Feedback / bug reports ============ */
+.fb-modal { width: 520px; max-width: calc(100vw - 24px); }
+.fb-composer { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 16px; }
+.fb-kind { display: flex; gap: 8px; margin-bottom: 10px; }
+.fb-kind-btn {
+  padding: 6px 14px; border: 1px solid var(--border); border-radius: 999px; font-size: 13px; font-weight: 600;
+  color: var(--text-2); background: var(--bg); cursor: pointer; transition: all .12s;
+}
+.fb-kind-btn:hover { border-color: var(--border-2); }
+.fb-kind-btn.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+.fb-text {
+  width: 100%; min-height: 84px; resize: vertical; border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; font-family: inherit; font-size: 13.5px; color: var(--text); background: var(--bg); outline: none;
+}
+.fb-text:focus { border-color: var(--primary); }
+.fb-send-row { display: flex; justify-content: flex-end; margin-top: 10px; }
+
+.fb-list-head { font-size: 12px; font-weight: 700; color: var(--text-2); margin-bottom: 8px; }
+.fb-empty { color: var(--text-2); font-size: 13px; padding: 14px 0; text-align: center; }
+.fb-list { max-height: 46vh; overflow-y: auto; }
+.fb-item { display: flex; align-items: flex-start; gap: 10px; padding: 11px 4px; border-top: 1px solid var(--border); }
+.fb-item.resolved { opacity: .55; }
+.fb-tag { flex: none; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+.fb-tag.fb-bug { background: rgba(226, 68, 92, .14); color: var(--danger); }
+.fb-tag.fb-idea { background: rgba(253, 171, 61, .18); color: #c77f12; }
+.fb-item-body { flex: 1; min-width: 0; }
+.fb-item-text { font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+.fb-item.resolved .fb-item-text { text-decoration: line-through; }
+.fb-item-meta { font-size: 11.5px; color: var(--text-2); margin-top: 3px; }
+.fb-item-acts { display: flex; gap: 2px; flex: none; }
