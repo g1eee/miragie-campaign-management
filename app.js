@@ -902,6 +902,7 @@ function modalPrompt(title, placeholder, value, onOk) {
 }
 
 function newItemModal(board, group, prefill = {}) {
+  if (!canEditBoard(board)) { toast("View only — ask an SPV for edit access"); return; }
   openModal((card, close) => {
     const data = {
       name: prefill.name || "",
@@ -1114,6 +1115,7 @@ function moveTaskTo(taskId, group, index) {
 }
 
 function addGroup(board) {
+  if (!canEditBoard(board)) { toast("View only — ask an SPV for edit access"); return; }
   const used = board.groups.map(g => g.color);
   const color = GROUP_COLORS.find(c => !used.includes(c)) || GROUP_COLORS[board.groups.length % GROUP_COLORS.length];
   const g = { id: uid(), name: "New Group", color, collapsed: false, tasks: [] };
@@ -1738,10 +1740,54 @@ function boardMenu(anchor, board) {
       }),
       ddItem("copy", "Duplicate board", () => { close(); duplicateBoard(board); }),
       ddItem("download", "Export to CSV", () => { close(); exportCSV(board); }),
-      h("hr", { class: "dd-sep" }),
-      ddItem("trash", "Delete board", () => { close(); deleteBoard(board); }, "danger"),
     );
+    if (isAdmin()) el.append(ddItem("gear", "Edit access", () => { close(); boardPermissionsModal(board); }));
+    el.append(h("hr", { class: "dd-sep" }));
+    if (board.archived) el.append(ddItem("refresh", "Restore board", () => { close(); toggleArchiveBoard(board, false); }));
+    else el.append(ddItem("archive", "Archive board", () => { close(); toggleArchiveBoard(board, true); }));
+    el.append(ddItem("trash", "Delete board", () => { close(); deleteBoard(board); }, "danger"));
   }, { minWidth: 200 });
+}
+
+function toggleArchiveBoard(board, on) {
+  board.archived = on;
+  if (on && state.activeBoard === board.id) {
+    ui.home = true;
+    state.activeBoard = (wsBoards().filter(b => !b.archived)[0] || {}).id || null;
+  }
+  save(); render();
+  toast(on ? `"${board.name}" archived` : `"${board.name}" restored`,
+    () => { board.archived = !on; save(); render(); });
+}
+
+// SPV/owner manage; pick which member roles may EDIT this board's content.
+function canEditBoard(board) {
+  if (isAdmin()) return true;                               // SPV / owner always
+  if (!board || !Array.isArray(board.editRoles)) return true;   // legacy/unset → everyone
+  return board.editRoles.includes((me() && me().role) || DEFAULT_MEMBER_ROLE);
+}
+
+function boardPermissionsModal(board) {
+  if (!isAdmin()) { toast("Only an SPV/owner can manage access"); return; }
+  if (!Array.isArray(board.editRoles)) board.editRoles = [...MEMBER_ROLES];
+  openModal((card, close) => {
+    const closeBtn = h("button", { class: "icon-btn", onclick: close }); closeBtn.append(ico("x", 16));
+    card.append(h("div", { class: "modal-head" }, h("div", { class: "ip-title", style: "flex:1" }, "Who can edit this board?"), closeBtn));
+    const body = h("div", { class: "modal-body" });
+    body.append(h("p", { class: "muted", style: "margin-bottom:10px;line-height:1.5" }, "SPV / owner can always edit and manage. Choose which member roles can edit this board — others get view-only."));
+    body.append(h("label", { class: "connect-row", style: "opacity:.7" },
+      h("input", { type: "checkbox", checked: true, disabled: true }), h("span", {}, OWNER_ROLE + " (always)")));
+    for (const r of MEMBER_ROLES) {
+      const cb = h("input", { type: "checkbox", checked: board.editRoles.includes(r) });
+      cb.addEventListener("change", () => {
+        if (cb.checked) { if (!board.editRoles.includes(r)) board.editRoles.push(r); }
+        else board.editRoles = board.editRoles.filter(x => x !== r);
+        save(); softRender();
+      });
+      body.append(h("label", { class: "connect-row" }, cb, h("span", {}, r)));
+    }
+    card.append(body, h("div", { class: "modal-foot" }, h("button", { class: "btn-primary", onclick: () => { save(); close(); render(); } }, "Done")));
+  });
 }
 
 function ddItem(icon, label, onclick, cls = "") {
@@ -1756,6 +1802,7 @@ function ddItem(icon, label, onclick, cls = "") {
 function renderMain() {
   const main = q("#main");
   main.replaceChildren();
+  main.classList.remove("board-ro");
 
   if (ui.home) { main.append(workspaceHomeEl()); return; }
 
@@ -1776,6 +1823,7 @@ function renderMain() {
     return;
   }
 
+  main.classList.toggle("board-ro", !canEditBoard(board));   // role-based read-only
   main.append(boardHeadEl(board));
   // Toolbar only for data views; doc/form/dashboard/chart/gantt have their own chrome.
   if (["table", "kanban", "calendar", "gantt"].includes(board.view)) main.append(toolbarEl(board));
@@ -2076,13 +2124,17 @@ function peopleManager(anchor) {
 function toolbarEl(board) {
   const bar = h("div", { class: "toolbar" });
 
-  const newBtn = h("button", { class: "btn-primary" });
-  newBtn.append(h("span", {}, "New task"), ico("chevDown", 13));
-  newBtn.addEventListener("click", () => {
-    if (!board.groups.length) addGroup(board);
-    newItemModal(board, board.groups[0], {});
-  });
-  bar.append(newBtn);
+  if (canEditBoard(board)) {
+    const newBtn = h("button", { class: "btn-primary" });
+    newBtn.append(h("span", {}, "New task"), ico("chevDown", 13));
+    newBtn.addEventListener("click", () => {
+      if (!board.groups.length) addGroup(board);
+      newItemModal(board, board.groups[0], {});
+    });
+    bar.append(newBtn);
+  } else {
+    bar.append(h("span", { class: "view-only-pill" }, ico("gear", 13), "View only"));
+  }
 
   // search
   const searchWrap = h("div", { class: "board-search-wrap" });
