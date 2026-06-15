@@ -510,6 +510,7 @@ function migrate() {
     if (!Array.isArray(b.views)) b.views = ["table", "kanban", "calendar"];
     if (!b.view || !b.views.includes(b.view)) b.view = b.views[0] || "table";
     if (!b.hidden) b.hidden = [];
+    if (!Array.isArray(b.removed)) b.removed = [];   // system columns deleted from this board (≠ hidden)
     if (b.doc == null) b.doc = "";
     if (!Array.isArray(b.widgets)) b.widgets = [];
     if (!Array.isArray(b.columns)) b.columns = [];
@@ -2237,7 +2238,8 @@ function hidePanel(anchor, board) {
 
     // Item column = the locked text column (name). Subitem columns = everything else.
     const sub = [...COLUMNS.map(c => ({ id: c.id, label: colLabel(board, c) })),
-                 ...board.columns.map(c => ({ id: c.id, label: c.name }))];
+                 ...board.columns.map(c => ({ id: c.id, label: c.name }))]
+                 .filter(c => !(board.removed || []).includes(c.id));   // deleted columns aren't "hidden" — don't list them
 
     const checkRow = (label, sub2, on, fn, cls) => {
       const cb = h("input", { type: "checkbox" }); cb.checked = on;
@@ -2299,7 +2301,7 @@ function orderedCols(board) {
   board.colOrder = order;
   const out = [];
   for (const id of order) {
-    if (board.hidden.includes(id)) continue;
+    if (board.hidden.includes(id) || (board.removed || []).includes(id)) continue;
     if (sysMap[id]) out.push({ kind: "sys", id, w: colW(board, id), sys: sysMap[id] });
     else if (customMap[id]) out.push({ kind: "custom", id, w: colW(board, id), col: customMap[id] });
   }
@@ -2714,18 +2716,24 @@ function sysColMenu(anchor, board, c) {
   }, { minWidth: 190 });
 }
 
-// system columns hold built-in data, so "delete" removes them from this board's view
-// (re-add later from the Hide menu). Undo restores immediately.
+// system columns hold built-in data, so "delete" removes them from this board's
+// view entirely (tracked in board.removed — NOT board.hidden, so it doesn't show
+// up in the Hide menu). Undo restores immediately.
 function deleteSysColumn(board, c) {
-  if (!confirm(`Delete the "${colLabel(board, c)}" column from this board?`)) return;
-  if (!board.hidden.includes(c.id)) board.hidden.push(c.id);
-  if (Array.isArray(board.colOrder)) board.colOrder = board.colOrder.filter(id => id !== c.id);
-  save();
-  render();
-  toast(`Column "${colLabel(board, c)}" deleted`, () => {
-    board.hidden = board.hidden.filter(id => id !== c.id);
-    save(); render();
-  });
+  const label = colLabel(board, c);
+  modalConfirm("Delete column?",
+    `The "${label}" column will be removed from this board. You can undo right after.`,
+    () => {
+      if (!board.removed.includes(c.id)) board.removed.push(c.id);
+      board.hidden = board.hidden.filter(id => id !== c.id);
+      if (Array.isArray(board.colOrder)) board.colOrder = board.colOrder.filter(id => id !== c.id);
+      save();
+      render();
+      toast(`Column "${label}" deleted`, () => {
+        board.removed = board.removed.filter(id => id !== c.id);
+        save(); render();
+      });
+    });
 }
 
 function colMenu(anchor, board, col) {
