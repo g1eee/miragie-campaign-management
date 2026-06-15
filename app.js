@@ -586,6 +586,7 @@ const COLUMN_TYPES = [
   { type: "doc",      name: "monday Doc",  icon: "doc",      color: "#0086c0", cat: "Super useful", desc: "Write a longer note" },
   { type: "lastupdate", name: "Last updated", icon: "clock",  color: "#66ccff", cat: "Super useful", desc: "Show when the item was last updated" },
   { type: "connect",  name: "Connect boards", icon: "link",  color: "#a25ddc", cat: "Super useful", desc: "Link an item from another board" },
+  { type: "mirror",   name: "Mirror",       icon: "link",     color: "#9d50dd", cat: "Super useful", desc: "Mirror a column from connected items" },
   { type: "extract",  name: "Extract info",icon: "vibe",     color: "#ff642e", cat: "Super useful", desc: "AI-extract data (demo)" },
   { type: "timeline", name: "Timeline",    icon: "gantt",    color: "#037f4c", cat: "Super useful", desc: "Set a start–end date range" },
   { type: "priority", name: "Priority",    icon: "bolt",     color: "#401694", cat: "Super useful", desc: "Set priority labels" },
@@ -2740,6 +2741,8 @@ function colMenu(anchor, board, col) {
   openDropdown(anchor, (el, close) => {
     el.append(ddItem("pencil", "Rename", () => { close(); modalPrompt("Rename column", "Column name", col.name, (v) => { col.name = v; save(); render(); }); }));
     if (LABEL_TYPES.includes(col.type)) el.append(ddItem("kanban", "Edit Labels", () => { close(); labelEditor(anchor, board, col); }));
+    if (col.type === "connect") el.append(ddItem("gear", "Connected board", () => { close(); connectBoardSettings(board, col); }));
+    if (col.type === "mirror") el.append(ddItem("gear", "Mirror settings", () => { close(); mirrorSettingsModal(board, col); }));
     if (col.type === "numbers") {
       const has = col.validation && col.validation.type;
       const it = ddItem("gear", "Validation rules", () => { close(); columnRulesModal(board, col); });
@@ -2927,6 +2930,8 @@ function addColumn(board, type, index) {
   save();
   render();
   toast(`${colTypeMeta(type).name} column added`);
+  // mirror needs config right away
+  if (type === "mirror") mirrorSettingsModal(board, col);
 }
 
 function deleteColumn(board, col) {
@@ -2964,6 +2969,7 @@ function cellEditorEl(board, task, col) {
     case "checkbox": return colCheckboxCellEl(task, col);
     case "files": return colFilesCellEl(task, col);
     case "connect": return colConnectCellEl(board, task, col);
+    case "mirror": return colMirrorCellEl(board, task, col);
     case "extract": return colExtractCellEl(task, col);
     default: return h("div", { class: "cell" });
   }
@@ -3302,25 +3308,206 @@ function docEditor(task, col, entry) {
   });
 }
 
-// --- Connect boards: link an item from another board ---
-function colConnectCellEl(board, task, col) {
+// --- Connect boards: link one or more items from another board ---
+// value = array of { boardId, taskId, name } (old single-object values still read fine)
+function getConnectLinks(task, col) {
   const v = task.cells[col.id];
-  const cell = h("div", { class: "cell connect-cell", title: "Link an item" });
-  if (v && v.name) cell.append(h("span", { class: "dd-tag", style: "background:#a25ddc" }, ico("link", 12), h("span", {}, v.name)));
-  else cell.append(h("span", { class: "muted", style: "display:flex;align-items:center;gap:4px" }, ico("link", 14), "Connect"));
-  cell.addEventListener("click", () => openDropdown(cell, (dd, close) => {
-    dd.append(h("div", { class: "dd-title" }, "Link an item"));
-    const others = wsBoards().filter(b => b.id !== board.id);
-    if (!others.length) { dd.append(h("div", { class: "dd-item disabled" }, "No other boards")); return; }
-    for (const b of others) {
-      for (const g of b.groups) for (const t of g.tasks) {
-        dd.append(h("div", { class: "dd-item", style: "gap:6px", onclick: () => { setColVal(task, col, { boardId: b.id, taskId: t.id, name: t.name }); close(); softRenderTable(getBoard()); } },
-          ico(b.icon || "table", 13), h("span", { style: "flex:1" }, t.name), h("span", { class: "muted", style: "font-size:11px" }, b.name)));
-      }
-    }
-    if (v) dd.append(h("hr", { class: "dd-sep" }), h("button", { class: "dd-footer-btn", onclick: () => { setColVal(task, col, ""); close(); softRenderTable(getBoard()); } }, "Clear link"));
-  }, { minWidth: 260 }));
+  if (!v) return [];
+  return Array.isArray(v) ? v : [v];
+}
+
+function colConnectCellEl(board, task, col) {
+  const links = getConnectLinks(task, col);
+  const cell = h("div", { class: "cell connect-cell", title: "Link items" });
+  if (links.length) {
+    const wrap = h("span", { style: "display:flex;gap:4px;flex-wrap:nowrap;overflow:hidden" });
+    links.slice(0, 3).forEach(l => wrap.append(h("span", { class: "dd-tag", style: "background:#a25ddc" }, ico("link", 11), h("span", {}, l.name))));
+    if (links.length > 3) wrap.append(h("span", { class: "muted", style: "font-size:11px" }, "+" + (links.length - 3)));
+    cell.append(wrap);
+  } else {
+    cell.append(h("span", { class: "muted", style: "display:flex;align-items:center;gap:4px" }, ico("link", 14), "Connect"));
+  }
+  cell.addEventListener("click", () => connectPicker(cell, board, task, col));
   return cell;
+}
+
+function connectPicker(anchor, board, task, col) {
+  openDropdown(anchor, (dd, close) => {
+    dd.classList.add("connect-pop");
+    const gear = h("button", { class: "row-act", title: "Boards settings", onclick: (e) => { e.stopPropagation(); close(); connectBoardSettings(board, col); } }, ico("gear", 14));
+    dd.append(h("div", { class: "connect-head" }, h("b", {}, "Choose items"), gear));
+
+    const targetBoard = state.boards.find(b => b.id === col.connectBoardId);
+    if (!targetBoard) {
+      dd.append(h("div", { class: "dd-title" }, "Connect to which board?"));
+      const others = wsBoards().filter(b => b.id !== board.id);
+      if (!others.length) { dd.append(h("div", { class: "dd-item disabled" }, "No other boards in this workspace")); return; }
+      for (const b of others) dd.append(h("div", { class: "dd-item", onclick: () => { col.connectBoardId = b.id; save(); close(); connectPicker(anchor, board, task, col); } },
+        ico(b.icon || "table", 13), h("span", { style: "flex:1" }, b.name)));
+      return;
+    }
+
+    dd.append(h("div", { class: "connect-board" }, ico(targetBoard.icon || "table", 13), h("b", {}, targetBoard.name)));
+    const search = h("input", { class: "connect-search", placeholder: "Search or add Item" });
+    dd.append(h("div", { class: "connect-searchwrap" }, ico("search", 13), search));
+    const listHost = h("div", { class: "connect-list" });
+    dd.append(listHost);
+
+    const has = (tid) => getConnectLinks(task, col).some(l => l.taskId === tid);
+    const toggle = (t) => {
+      let arr = getConnectLinks(task, col).slice();
+      if (has(t.id)) arr = arr.filter(l => l.taskId !== t.id);
+      else arr.push({ boardId: targetBoard.id, taskId: t.id, name: t.name });
+      setColVal(task, col, arr); draw(); softRenderTable(getBoard());
+    };
+    const draw = () => {
+      listHost.replaceChildren();
+      const f = search.value.toLowerCase();
+      let any = false;
+      for (const g of targetBoard.groups) {
+        const items = g.tasks.filter(t => !f || t.name.toLowerCase().includes(f));
+        if (!items.length) continue;
+        listHost.append(h("div", { class: "connect-group", style: `color:${g.color}` }, g.name));
+        for (const t of items) {
+          any = true;
+          const on = has(t.id);
+          listHost.append(h("label", { class: "connect-row" + (on ? " on" : "") },
+            h("input", { type: "checkbox", checked: on, onchange: () => toggle(t) }), h("span", {}, t.name)));
+        }
+      }
+      const term = search.value.trim();
+      const exists = targetBoard.groups.some(g => g.tasks.some(t => t.name.toLowerCase() === term.toLowerCase()));
+      if (term && !exists) {
+        listHost.append(h("div", { class: "connect-add", onclick: () => {
+          let g = targetBoard.groups[0]; if (!g) { addGroup(targetBoard); g = targetBoard.groups[0]; }
+          const nt = mkTask(term); g.tasks.unshift(nt);
+          const arr = getConnectLinks(task, col).slice(); arr.push({ boardId: targetBoard.id, taskId: nt.id, name: nt.name });
+          setColVal(task, col, arr); save(); search.value = ""; draw(); softRenderTable(getBoard());
+        } }, ico("plus", 13), h("span", {}, `Add "${term}"`)));
+      } else if (!any) {
+        listHost.append(h("div", { class: "muted", style: "padding:8px" }, "No items"));
+      }
+    };
+    search.addEventListener("input", draw);
+    search.addEventListener("keydown", (e) => e.stopPropagation());
+    draw();
+  }, { minWidth: 300 });
+}
+
+function connectBoardSettings(board, col) {
+  openModal((card, close) => {
+    const closeBtn = h("button", { class: "icon-btn", onclick: close }); closeBtn.append(ico("x", 16));
+    card.append(h("div", { class: "modal-head" }, h("div", { class: "ip-title", style: "flex:1" }, "Connect column settings"), closeBtn));
+    const body = h("div", { class: "modal-body" });
+    body.append(h("p", { class: "muted", style: "margin-bottom:8px" }, "Which board can items be linked from?"));
+    const others = wsBoards().filter(b => b.id !== board.id);
+    const sel = h("select", { class: "cvr-sel", style: "width:100%" });
+    sel.append(h("option", { value: "" }, "Choose a board…"));
+    for (const b of others) sel.append(h("option", { value: b.id }, b.name));
+    sel.value = col.connectBoardId || "";
+    body.append(sel);
+    card.append(body);
+    const ok = h("button", { class: "btn-primary" }, "Save");
+    ok.addEventListener("click", () => { col.connectBoardId = sel.value || null; save(); close(); render(); });
+    card.append(h("div", { class: "modal-foot" }, h("button", { class: "modal-cancel", onclick: close }, "Cancel"), ok));
+  });
+}
+
+// --- Mirror: reflect a column from the items linked via a Connect column ---
+const MIRROR_SYS = [["name", "Item name"], ["status", "Status"], ["priority", "Priority"], ["due", "Due date"], ["owners", "Owner"], ["updated", "Last updated"]];
+
+function mirrorPill(label) { return h("span", { class: "mirror-pill", style: `background:${(label && label.color) || "#c4c4c4"}` }, (label && label.label) || "—"); }
+function taskIsDone(t) { const s = statusOf(t); return s.id === "done" || /done|complete|selesai/i.test(s.label || ""); }
+
+// render the mirrored value(s) of one linked task for a given source column id
+function mirrorValueEls(lt, colId, lb) {
+  if (colId === "name") return [h("span", { class: "mirror-txt" }, lt.name)];
+  if (colId === "status") return [mirrorPill(statusOf(lt))];
+  if (colId === "priority") return [mirrorPill(prioOf(lt))];
+  if (colId === "due") return [h("span", { class: "mirror-txt" }, lt.due ? fmtDate(lt.due) : "—")];
+  if (colId === "updated") return [h("span", { class: "mirror-txt" }, relTime(lt.updatedAt))];
+  if (colId === "owners") {
+    const ids = lt.owners || [];
+    if (!ids.length) return [h("span", { class: "mirror-txt muted" }, "—")];
+    const w = h("span", { class: "avatar-stack" });
+    ids.slice(0, 3).forEach(id => { const p = personById(id); if (p) w.append(avatarEl(p, 20)); });
+    return [w];
+  }
+  const cc = (lb.columns || []).find(c => c.id === colId);
+  const val = lt.cells ? lt.cells[colId] : undefined;
+  if (cc && LABEL_TYPES.includes(cc.type)) { const lab = (cc.labels || []).find(l => l.id === val); return [mirrorPill(lab || { label: "—", color: "#c4c4c4" })]; }
+  if (val == null || val === "") return [h("span", { class: "mirror-txt muted" }, "—")];
+  return [h("span", { class: "mirror-txt" }, typeof val === "object" ? (val.name || "") : String(val))];
+}
+
+function colMirrorCellEl(board, task, col) {
+  const cell = h("div", { class: "cell mirror-cell" });
+  const connCol = (board.columns || []).find(c => c.id === col.mirrorConnectId && c.type === "connect")
+    || (board.columns || []).find(c => c.type === "connect");
+  if (!connCol || !col.mirrorColId) {
+    cell.append(h("span", { class: "muted", style: "display:flex;align-items:center;gap:4px" }, ico("gear", 13), "Set up mirror"));
+    cell.addEventListener("click", () => mirrorSettingsModal(board, col));
+    return cell;
+  }
+  const links = getConnectLinks(task, connCol);
+  if (!links.length) { cell.append(h("span", { class: "muted" }, "—")); return cell; }
+  const wrap = h("div", { class: "mirror-wrap" });
+  if (col.mirrorSummary === "done" && col.mirrorColId === "status") {
+    let done = 0, total = 0;
+    for (const lk of links) { const loc = locateTask(lk.taskId); if (!loc) continue; total++; if (taskIsDone(loc.task)) done++; }
+    wrap.append(h("span", { class: "mirror-pill", style: `background:${done === total && total ? "#00c875" : "#fdab3d"}` }, `${done}/${total} done`));
+  } else {
+    for (const lk of links) {
+      const loc = locateTask(lk.taskId); if (!loc) continue;
+      mirrorValueEls(loc.task, col.mirrorColId, loc.board).forEach(n => wrap.append(n));
+    }
+  }
+  cell.append(wrap);
+  return cell;
+}
+
+function mirrorSettingsModal(board, col) {
+  const connCols = (board.columns || []).filter(c => c.type === "connect");
+  openModal((card, close) => {
+    const closeBtn = h("button", { class: "icon-btn", onclick: close }); closeBtn.append(ico("x", 16));
+    card.append(h("div", { class: "modal-head" }, h("div", { class: "ip-title", style: "flex:1" }, "Mirror data from connected column"), closeBtn));
+    const body = h("div", { class: "modal-body" });
+    if (!connCols.length) {
+      body.append(h("p", { class: "muted" }, "Add a “Connect boards” column to this board first, then mirror a column from it."));
+      card.append(body, h("div", { class: "modal-foot" }, h("button", { class: "btn-primary", onclick: close }, "OK")));
+      return;
+    }
+    body.append(h("p", { class: "muted", style: "margin-bottom:10px" }, "Choose which column to mirror from the connected board."));
+    if (!col.mirrorConnectId || !connCols.some(c => c.id === col.mirrorConnectId)) col.mirrorConnectId = connCols[0].id;
+
+    const connSel = h("select", { class: "cvr-sel", style: "width:100%;margin-bottom:12px" });
+    for (const c of connCols) connSel.append(h("option", { value: c.id }, "From: " + c.name));
+    connSel.value = col.mirrorConnectId;
+
+    const colSel = h("select", { class: "cvr-sel", style: "width:100%" });
+    const fillCols = () => {
+      colSel.replaceChildren();
+      const cc = connCols.find(c => c.id === connSel.value);
+      const tb = cc && state.boards.find(b => b.id === cc.connectBoardId);
+      for (const [id, label] of MIRROR_SYS) colSel.append(h("option", { value: id }, label));
+      if (tb) for (const c of (tb.columns || [])) colSel.append(h("option", { value: c.id }, c.name));
+      colSel.value = col.mirrorColId || "status";
+    };
+    connSel.addEventListener("change", () => { col.mirrorConnectId = connSel.value; fillCols(); });
+    fillCols();
+    body.append(h("label", { class: "muted", style: "font-size:12px;display:block;margin-bottom:4px" }, "Column to mirror"), colSel);
+
+    const sumWrap = h("div", { class: "fb-kind", style: "margin-top:14px" });
+    const cur = () => col.mirrorSummary || "all";
+    const mk = (id, label) => { const b = h("button", { class: "fb-kind-btn" + (cur() === id ? " active" : ""), onclick: () => { col.mirrorSummary = id; for (const x of sumWrap.children) x.classList.remove("active"); b.classList.add("active"); } }, label); return b; };
+    sumWrap.append(mk("all", "All Labels"), mk("done", "What's Done"));
+    body.append(h("div", { class: "muted", style: "font-size:12px;margin-top:14px;margin-bottom:4px" }, "Show summary of"), sumWrap);
+    card.append(body);
+
+    const ok = h("button", { class: "btn-primary" }, "Save");
+    ok.addEventListener("click", () => { col.mirrorConnectId = connSel.value; col.mirrorColId = colSel.value; save(); close(); render(); });
+    card.append(h("div", { class: "modal-foot" }, h("button", { class: "modal-cancel", onclick: close }, "Cancel"), ok));
+  });
 }
 
 // --- Extract info: AI placeholder ---
