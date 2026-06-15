@@ -6193,7 +6193,7 @@ function showDesktopNotif(n) {
     const who = personById(n.who);
     const body = (n.preview ? "“" + n.preview + "”\n" : "") + n.task.name + " · " + n.board.name;
     const nt = new Notification((who ? who.name : "Someone") + " mentioned you", { body, tag: n.id, icon: (who && who.avatar) || undefined });
-    nt.onclick = () => { window.focus(); markNotifRead(n.id); ui.panel = n.task.id; renderPanel(); renderTopbar(); nt.close(); };
+    nt.onclick = () => { window.focus(); openTaskFromNotif(n.task.id, n.id); nt.close(); };
   } catch (e) { /* ignore */ }
 }
 // keep the tab title in sync with unread count; pop a desktop notif for NEW @mentions
@@ -6222,6 +6222,20 @@ function notifAgo(ts) {
 }
 const notifIsToday = (ts) => new Date(ts).toDateString() === new Date().toDateString();
 
+// open a task FROM a notification: jump to its workspace + board, then the panel
+function openTaskFromNotif(taskId, notifId) {
+  if (notifId) markNotifRead(notifId);
+  const loc = locateTask(taskId);
+  if (!loc) { toast("That item no longer exists"); renderTopbar(); return; }
+  const b = loc.board;
+  if (b.workspaceId) state.activeWorkspace = b.workspaceId;
+  state.activeBoard = b.id;
+  ui.home = false;
+  resetBoardUi();
+  ui.panel = taskId;
+  render();
+}
+
 function notifRow(n, close) {
   const read = notifIsRead(n.id);
   const actor = n.system
@@ -6241,7 +6255,7 @@ function notifRow(n, close) {
     h("div", { class: "notif-meta" }, n.board.name + " · " + notifAgo(n.at)));
   return h("div", {
     class: "notif-item" + (read ? "" : " unread") + (n.ping ? " ping" : ""),
-    onclick: () => { markNotifRead(n.id); ui.panel = n.task.id; renderPanel(); renderTopbar(); close(); }
+    onclick: () => { close(); openTaskFromNotif(n.task.id, n.id); }
   }, actor, body, read ? null : h("span", { class: "notif-dot" }));
 }
 
