@@ -3620,11 +3620,7 @@ function colMirrorCellEl(board, task, col) {
   if (links.length === 1) {
     const loc = locateTask(links[0].taskId);
     if (!loc) { const c = h("div", { class: "cell mirror-cell" }); c.append(h("span", { class: "muted" }, "—")); return c; }
-    if (MIRROR_EDITABLE_SYS.includes(id) || id === "updated") return sysCellEl(loc.task, id);
-    if (id === "name") { const c = h("div", { class: "cell mirror-cell" }); c.append(h("span", { class: "mirror-txt" }, loc.task.name)); return c; }
-    const cc = (loc.board.columns || []).find(c => c.id === id);
-    if (cc) return cellEditorEl(loc.board, loc.task, cc);
-    const c = h("div", { class: "cell mirror-cell" }); c.append(h("span", { class: "muted" }, "—")); return c;
+    return mirrorSourceCell(loc, id);
   }
 
   // MULTIPLE links → read-only summary
@@ -3657,7 +3653,37 @@ function colMirrorCellEl(board, task, col) {
     for (const lk of links) { const loc = locateTask(lk.taskId); if (!loc) continue; wrap.append(mirrorTextEl(loc.task, id, loc.board)); }
     cell.append(wrap);
   }
+  // multiple links → clicking opens a per-item editor (if the mirrored column is editable)
+  const editable = MIRROR_EDITABLE_SYS.includes(id) || (connBoard && (connBoard.columns || []).some(c => c.id === id));
+  if (editable) {
+    cell.style.cursor = "pointer";
+    cell.title = "Click to update each item";
+    cell.addEventListener("click", () => mirrorMultiEditor(cell, links, id));
+  }
   return cell;
+}
+
+// shared single-item editable cell for a mirror (writes back to the source item)
+function mirrorSourceCell(loc, id) {
+  if (MIRROR_EDITABLE_SYS.includes(id) || id === "updated") return sysCellEl(loc.task, id);
+  if (id === "name") { const c = h("div", { class: "cell mirror-cell" }); c.append(h("span", { class: "mirror-txt" }, loc.task.name)); return c; }
+  const cc = (loc.board.columns || []).find(c => c.id === id);
+  if (cc) return cellEditorEl(loc.board, loc.task, cc);
+  const c = h("div", { class: "cell mirror-cell" }); c.append(h("span", { class: "muted" }, "—")); return c;
+}
+
+// popover listing each linked item with its own editable cell — edits write back
+function mirrorMultiEditor(anchor, links, id) {
+  openDropdown(anchor, (el) => {
+    el.classList.add("mm-pop");
+    el.append(h("div", { class: "dd-title" }, "Update each item"));
+    for (const lk of links) {
+      const loc = locateTask(lk.taskId); if (!loc) continue;
+      el.append(h("div", { class: "mm-row" },
+        h("span", { class: "mm-name", title: loc.task.name }, loc.task.name),
+        mirrorSourceCell(loc, id)));
+    }
+  }, { minWidth: 300 });
 }
 
 function mirrorTextEl(lt, colId, lb) {
