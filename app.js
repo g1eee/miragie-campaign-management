@@ -519,7 +519,7 @@ function migrate() {
     if (b.doc == null) b.doc = "";
     if (!Array.isArray(b.widgets)) b.widgets = [];
     if (!Array.isArray(b.columns)) b.columns = [];
-    b.columns.forEach(c => { if (c.type === "mirror") c.name = "Mirror"; });   // mirror column is always named "Mirror"
+    b.columns.forEach(c => { if (c.type === "mirror") { c.name = "Mirror"; if (c.mirrorColId === "due") c.mirrorColId = "date"; if (c.mirrorColId === "owners") c.mirrorColId = "owner"; } });
     if (!b.colNames) b.colNames = {};
     if (!b.chartConfig) b.chartConfig = { chartType: "donut", metric: "status" };
     if (!b.createdAt) b.createdAt = Date.now();
@@ -3482,68 +3482,68 @@ function connectBoardSettings(board, col) {
   });
 }
 
-// --- Mirror: reflect a column from the items linked via a Connect column ---
-const MIRROR_SYS = [["name", "Item name"], ["status", "Status"], ["priority", "Priority"], ["due", "Due date"], ["owners", "Owner"], ["updated", "Last updated"]];
+// --- Mirror: reflect (and edit) a column from items linked via a Connect column ---
+// system column ids must match COLUMNS / sysCellEl: owner, status, date, priority, updated
+const MIRROR_SYS = [["status", "Status"], ["priority", "Priority"], ["date", "Due date"], ["owner", "Owner"], ["updated", "Last updated"], ["name", "Item name"]];
+const MIRROR_EDITABLE_SYS = ["status", "priority", "date", "owner"];
 
-function mirrorPill(label) { return h("span", { class: "mirror-pill", style: `background:${(label && label.color) || "#c4c4c4"}` }, (label && label.label) || "—"); }
 function taskIsDone(t) { const s = statusOf(t); return s.id === "done" || /done|complete|selesai/i.test(s.label || ""); }
 
-// render the mirrored value(s) of one linked task for a given source column id
-function mirrorValueEls(lt, colId, lb) {
-  if (colId === "name") return [h("span", { class: "mirror-txt" }, lt.name)];
-  if (colId === "status") return [mirrorPill(statusOf(lt))];
-  if (colId === "priority") return [mirrorPill(prioOf(lt))];
-  if (colId === "due") return [h("span", { class: "mirror-txt" }, lt.due ? fmtDate(lt.due) : "—")];
-  if (colId === "updated") return [h("span", { class: "mirror-txt" }, relTime(lt.updatedAt))];
-  if (colId === "owners") {
-    const ids = lt.owners || [];
-    if (!ids.length) return [h("span", { class: "mirror-txt muted" }, "—")];
-    const w = h("span", { class: "avatar-stack" });
-    ids.slice(0, 3).forEach(id => { const p = personById(id); if (p) w.append(avatarEl(p, 20)); });
-    return [w];
-  }
-  const cc = (lb.columns || []).find(c => c.id === colId);
-  const val = lt.cells ? lt.cells[colId] : undefined;
-  if (cc && LABEL_TYPES.includes(cc.type)) { const lab = (cc.labels || []).find(l => l.id === val); return [mirrorPill(lab || { label: "—", color: "#c4c4c4" })]; }
-  if (val == null || val === "") return [h("span", { class: "mirror-txt muted" }, "—")];
-  return [h("span", { class: "mirror-txt" }, typeof val === "object" ? (val.name || "") : String(val))];
-}
-
 function colMirrorCellEl(board, task, col) {
-  const cell = h("div", { class: "cell mirror-cell" });
   const connCol = (board.columns || []).find(c => c.id === col.mirrorConnectId && c.type === "connect")
     || (board.columns || []).find(c => c.type === "connect");
   if (!connCol || !col.mirrorColId) {
+    const cell = h("div", { class: "cell mirror-cell" });
     cell.append(h("span", { class: "muted", style: "display:flex;align-items:center;gap:4px" }, ico("gear", 13), "Set up mirror"));
     cell.addEventListener("click", () => mirrorSettingsModal(board, col));
     return cell;
   }
   const links = getConnectLinks(task, connCol);
-  if (!links.length) { cell.append(h("span", { class: "muted" }, "—")); return cell; }
-  const connBoard = state.boards.find(b => b.id === connCol.connectBoardId) || (links[0] && state.boards.find(b => b.id === links[0].boardId));
-  const labelType = isLabelMirror(connBoard, col.mirrorColId);
+  if (!links.length) { const c = h("div", { class: "cell mirror-cell" }); c.append(h("span", { class: "muted" }, "—")); return c; }
+  const id = col.mirrorColId;
 
-  if (col.mirrorSummary === "done" && col.mirrorColId === "status") {
+  // SINGLE linked item → render the SOURCE item's own cell, so editing here writes
+  // straight back to that item (two-way). Source board edits flow back via realtime.
+  if (links.length === 1) {
+    const loc = locateTask(links[0].taskId);
+    if (!loc) { const c = h("div", { class: "cell mirror-cell" }); c.append(h("span", { class: "muted" }, "—")); return c; }
+    if (MIRROR_EDITABLE_SYS.includes(id) || id === "updated") return sysCellEl(loc.task, id);
+    if (id === "name") { const c = h("div", { class: "cell mirror-cell" }); c.append(h("span", { class: "mirror-txt" }, loc.task.name)); return c; }
+    const cc = (loc.board.columns || []).find(c => c.id === id);
+    if (cc) return cellEditorEl(loc.board, loc.task, cc);
+    const c = h("div", { class: "cell mirror-cell" }); c.append(h("span", { class: "muted" }, "—")); return c;
+  }
+
+  // MULTIPLE links → read-only summary
+  const cell = h("div", { class: "cell mirror-cell" });
+  const connBoard = state.boards.find(b => b.id === connCol.connectBoardId) || (links[0] && state.boards.find(b => b.id === links[0].boardId));
+  if (col.mirrorSummary === "done" && id === "status") {
     let done = 0, total = 0;
     for (const lk of links) { const loc = locateTask(lk.taskId); if (!loc) continue; total++; if (taskIsDone(loc.task)) done++; }
     cell.append(h("span", { class: "mirror-pill", style: `background:${done === total && total ? "#00c875" : "#fdab3d"}` }, `${done}/${total} done`));
-  } else if (labelType) {
-    // stacked colour bar — one segment per connected item's label colour
+  } else if (isLabelMirror(connBoard, id)) {
     const bar = h("div", { class: "mirror-bar" });
-    for (const lk of links) {
-      const loc = locateTask(lk.taskId); if (!loc) continue;
-      bar.append(h("span", { class: "mirror-seg", style: `background:${mirrorLabelColor(loc.task, col.mirrorColId, loc.board) || "#c4c4c4"}` }));
-    }
+    for (const lk of links) { const loc = locateTask(lk.taskId); if (!loc) continue; bar.append(h("span", { class: "mirror-seg", style: `background:${mirrorLabelColor(loc.task, id, loc.board)}` })); }
     cell.append(bar);
   } else {
     const wrap = h("div", { class: "mirror-wrap" });
-    for (const lk of links) {
-      const loc = locateTask(lk.taskId); if (!loc) continue;
-      mirrorValueEls(loc.task, col.mirrorColId, loc.board).forEach(n => wrap.append(n));
-    }
+    for (const lk of links) { const loc = locateTask(lk.taskId); if (!loc) continue; wrap.append(mirrorTextEl(loc.task, id, loc.board)); }
     cell.append(wrap);
   }
   return cell;
+}
+
+function mirrorTextEl(lt, colId, lb) {
+  if (colId === "name") return h("span", { class: "mirror-txt" }, lt.name);
+  if (colId === "date") return h("span", { class: "mirror-txt" }, lt.due ? fmtDate(lt.due) : "—");
+  if (colId === "updated") return h("span", { class: "mirror-txt" }, relTime(lt.updatedAt));
+  if (colId === "owner") {
+    const ids = lt.owners || []; if (!ids.length) return h("span", { class: "mirror-txt muted" }, "—");
+    const w = h("span", { class: "avatar-stack" }); ids.slice(0, 3).forEach(id => { const p = personById(id); if (p) w.append(avatarEl(p, 20)); }); return w;
+  }
+  const val = lt.cells ? lt.cells[colId] : undefined;
+  if (val == null || val === "") return h("span", { class: "mirror-txt muted" }, "—");
+  return h("span", { class: "mirror-txt" }, typeof val === "object" ? (val.name || "") : String(val));
 }
 
 function isLabelMirror(connBoard, colId) {
