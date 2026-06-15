@@ -1564,10 +1564,13 @@ function renderBroadcast() {
   if (!show) { if (bar) bar.remove(); document.documentElement.classList.remove("has-bcast"); return; }
   if (bar) bar.remove();
   const who = personById(bc.by);
+  const msg = bc.text + (who ? "      —  " + who.name : "");
+  const dur = Math.max(12, Math.round(msg.length * 0.32));   // longer text scrolls a bit longer
+  const track = h("div", { class: "bcast-track", style: `animation-duration:${dur}s` },
+    h("span", {}, msg), h("span", { "aria-hidden": "true" }, msg));   // duplicate for seamless loop
   bar = h("div", { id: "bcast" },
     h("span", { class: "bcast-ico" }, ico("megaphone", 16)),
-    h("span", { class: "bcast-text" }, bc.text),
-    who ? h("span", { class: "bcast-by" }, "— " + who.name) : null);
+    h("div", { class: "bcast-marquee" }, track));
   const tail = h("span", { class: "bcast-tail" });
   if (isAdmin()) {
     const revoke = h("button", { class: "bcast-btn", title: "Revoke for everyone" }, ico("trash", 13), h("span", {}, "Revoke"));
