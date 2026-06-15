@@ -4341,7 +4341,12 @@ function kanbanViewEl(board) {
       for (const t of visibleTasks(g)) if (t.status === s.id) tasks.push({ t, g });
     }
     const col = h("div", { class: "kb-col" });
-    col.append(h("div", { class: "kb-head", style: `background:${s.color}` }, s.label, h("span", {}, `${tasks.length}`)));
+    const head = h("div", { class: "kb-head", style: `background:${s.color}`, draggable: canEditBoard(board) ? "true" : null, title: canEditBoard(board) ? "Drag to reorder column" : "" }, s.label, h("span", {}, `${tasks.length}`));
+    if (canEditBoard(board)) {
+      head.addEventListener("dragstart", (e) => { ui.drag = { type: "kbcol", statusId: s.id }; e.dataTransfer.effectAllowed = "move"; col.classList.add("kb-col-dragging"); e.stopPropagation(); });
+      head.addEventListener("dragend", () => { ui.drag = null; document.querySelectorAll(".kb-col-dragging,.kb-col-drop").forEach(x => x.classList.remove("kb-col-dragging", "kb-col-drop")); });
+    }
+    col.append(head);
     const cards = h("div", { class: "kb-cards" });
     for (const { t, g } of tasks) cards.append(kanbanCardEl(t, g));
     col.append(cards);
@@ -4358,16 +4363,18 @@ function kanbanViewEl(board) {
 
     col.addEventListener("dragover", (e) => {
       if (!ui.drag) return;
+      if (ui.drag.type === "kbcol") { if (ui.drag.statusId === s.id) return; e.preventDefault(); col.classList.add("kb-col-drop"); return; }
       e.preventDefault();
       col.classList.add("drop-target");
     });
     col.addEventListener("dragleave", (e) => {
-      if (!col.contains(e.relatedTarget)) col.classList.remove("drop-target");
+      if (!col.contains(e.relatedTarget)) col.classList.remove("drop-target", "kb-col-drop");
     });
     col.addEventListener("drop", (e) => {
       if (!ui.drag) return;
       e.preventDefault();
-      col.classList.remove("drop-target");
+      col.classList.remove("drop-target", "kb-col-drop");
+      if (ui.drag.type === "kbcol") { const dragId = ui.drag.statusId; ui.drag = null; reorderStatus(dragId, s.id); return; }
       const t = locateTask(ui.drag.taskId)?.task;
       ui.drag = null;
       if (!t || t.status === s.id) return;
@@ -4508,6 +4515,18 @@ function addCardWithStatus(group, name, status) {
   const t = mkTask(name, { by: state.user, status });
   group.tasks.push(t);
   touch(t); save(); render();
+}
+
+// drag-reorder kanban columns = reorder the status list (dropped column goes before target)
+function reorderStatus(dragId, targetId) {
+  if (dragId === targetId) return;
+  const arr = state.statuses;
+  const di = arr.findIndex(s => s.id === dragId);
+  if (di < 0) return;
+  const [m] = arr.splice(di, 1);
+  const ti = arr.findIndex(s => s.id === targetId);
+  arr.splice(ti < 0 ? arr.length : ti, 0, m);
+  save(); render();
 }
 
 /* ---------------- Render: calendar view ---------------- */
