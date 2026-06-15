@@ -83,6 +83,7 @@ const PATHS = {
   moon: '<path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   bell: '<path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  megaphone: '<path d="M3 11v2a1 1 0 0 0 1 1h2l9 5V5l-9 5H4a1 1 0 0 0-1 1z"/><path d="M18 8a4 4 0 0 1 0 8"/>',
   grip: '<circle cx="9" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.4" fill="currentColor" stroke="none"/>',
   chat: '<path d="M12 3a9 9 0 0 0-7.5 14L3 21l4.2-1.4A9 9 0 1 0 12 3z"/>',
   download: '<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>',
@@ -1429,6 +1430,7 @@ function render() {
   renderPanel();
   renderBulk();
   renderTopbar();
+  renderBroadcast();
   applyRefocus();
   renderAuthGate();
 }
@@ -1550,6 +1552,62 @@ function renderTopbar() {
   meBtn.replaceChildren(avatarEl(me(), 30));
   renderGreeting();
   syncNotifAlerts();   // tab-title badge + desktop popup for new @mentions
+}
+
+// Team broadcast bar under the header. Dismiss (X) is per-session — it returns on
+// refresh until an SPV/owner revokes it. Posting/revoking is SPV/owner only.
+function renderBroadcast() {
+  const bc = state.broadcast;
+  let bar = document.getElementById("bcast");
+  const gated = cloudOn() && (!window.CLOUD.user() || ui.noAccess);
+  const show = bc && bc.text && !gated && ui.bcastHiddenId !== bc.id;
+  if (!show) { if (bar) bar.remove(); document.documentElement.classList.remove("has-bcast"); return; }
+  if (bar) bar.remove();
+  const who = personById(bc.by);
+  bar = h("div", { id: "bcast" },
+    h("span", { class: "bcast-ico" }, ico("megaphone", 16)),
+    h("span", { class: "bcast-text" }, bc.text),
+    who ? h("span", { class: "bcast-by" }, "— " + who.name) : null);
+  const tail = h("span", { class: "bcast-tail" });
+  if (isAdmin()) {
+    const revoke = h("button", { class: "bcast-btn", title: "Revoke for everyone" }, ico("trash", 13), h("span", {}, "Revoke"));
+    revoke.addEventListener("click", () => { state.broadcast = null; save(); render(); toast("Broadcast revoked"); });
+    tail.append(revoke);
+  }
+  const x = h("button", { class: "bcast-x", title: "Dismiss (returns on refresh)" }); x.append(ico("x", 15));
+  x.addEventListener("click", () => { ui.bcastHiddenId = bc.id; renderBroadcast(); });
+  tail.append(x);
+  bar.append(tail);
+  const shell = document.getElementById("shell");
+  document.body.insertBefore(bar, shell);
+  document.documentElement.classList.add("has-bcast");
+}
+
+function broadcastModal() {
+  if (!isAdmin()) { toast("Only an SPV/owner can broadcast"); return; }
+  openModal((card, close) => {
+    const closeBtn = h("button", { class: "icon-btn", onclick: close }); closeBtn.append(ico("x", 16));
+    card.append(h("div", { class: "modal-head" }, h("div", { class: "ip-title", style: "flex:1" }, "Broadcast to team"), closeBtn));
+    const body = h("div", { class: "modal-body" });
+    body.append(h("p", { class: "muted", style: "margin-bottom:8px;line-height:1.5" }, "Everyone sees this in the header banner and their notifications until you revoke it."));
+    const ta = h("textarea", { class: "fb-text", placeholder: "Type the announcement…" }, state.broadcast ? state.broadcast.text : "");
+    ta.value = state.broadcast ? state.broadcast.text : "";
+    ta.addEventListener("keydown", (e) => e.stopPropagation());
+    body.append(ta);
+    card.append(body);
+    const foot = h("div", { class: "modal-foot" });
+    if (state.broadcast) foot.append(h("button", { class: "modal-cancel", style: "color:var(--danger)", onclick: () => { state.broadcast = null; save(); close(); render(); toast("Broadcast revoked"); } }, "Revoke current"));
+    const send = h("button", { class: "btn-primary" }, state.broadcast ? "Update" : "Send broadcast");
+    send.addEventListener("click", () => {
+      const text = ta.value.trim();
+      if (!text) { ta.focus(); return; }
+      state.broadcast = { id: uid(), text, by: state.user, at: Date.now() };
+      save(); close(); render(); toast("Broadcast sent to the team");
+    });
+    foot.append(send);
+    card.append(foot);
+    setTimeout(() => ta.focus(), 0);
+  });
 }
 
 function avatarEl(person, size = 26) {
@@ -6498,6 +6556,7 @@ function profileMenu(anchor) {
     el.append(h("hr", { class: "dd-sep" }));
     el.append(ddItem("smile", "Choose anime character", () => { close(); characterPicker(anchor, me()); }));
     el.append(ddItem("personPlus", "Manage members", () => { close(); peopleManager(anchor); }));
+    if (isAdmin()) el.append(ddItem("megaphone", state.broadcast ? "Broadcast (active)" : "Broadcast to team", () => { close(); broadcastModal(); }));
     el.append(ddItem(state.theme === "light" ? "moon" : "sun", state.theme === "light" ? "Dark mode" : "Light mode", () => {
       state.theme = state.theme === "light" ? "dark" : "light"; save(); close(); render();
     }));
@@ -6543,6 +6602,11 @@ function collectNotifs() {
   const out = [];
   const my = state.user;
   const meP = me();
+  // team broadcast from SPV/owner — shows for everyone except the author
+  const bc = state.broadcast;
+  if (bc && bc.text && bc.by !== my) {
+    out.push({ id: "bc" + bc.id, type: "broadcast", broadcast: true, who: bc.by, verb: "broadcast", preview: bc.text.slice(0, 120), at: bc.at });
+  }
   for (const b of state.boards) {
     if (!wsAllowed(b.workspaceId)) continue;   // only notify on workspaces you can access
     for (const g of (b.groups || [])) {
@@ -6634,6 +6698,16 @@ function openTaskFromNotif(taskId, notifId) {
 
 function notifRow(n, close) {
   const read = notifIsRead(n.id);
+  if (n.broadcast) {
+    const who = personById(n.who);
+    const body = h("div", { class: "notif-body" },
+      h("div", { class: "notif-text" }, h("b", {}, "📢 Team broadcast")),
+      h("div", { class: "notif-preview", style: "white-space:normal" }, n.preview),
+      h("div", { class: "notif-meta" }, (who ? who.name : "SPV") + " · " + notifAgo(n.at)));
+    return h("div", { class: "notif-item" + (read ? "" : " unread"),
+      onclick: () => { markNotifRead(n.id); renderTopbar(); close(); } },
+      h("span", { class: "notif-sys-ico" }, ico("megaphone", 18)), body, read ? null : h("span", { class: "notif-dot" }));
+  }
   const actor = n.system
     ? h("span", { class: "notif-sys-ico" + (n.verb.includes("overdue") ? " danger" : "") },
         ico(n.verb.includes("overdue") ? "clock" : "bell", 18))

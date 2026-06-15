@@ -2864,6 +2864,22 @@ input, textarea, select { border-radius: 10px; }
 
 /* ============ Board read-only (role lacks edit access) ============ */
 .view-only-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--text-2); background: var(--surface-2); border-radius: 999px; padding: 6px 12px; }
+
+/* ============ Team broadcast bar ============ */
+#bcast {
+  height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 18px;
+  background: linear-gradient(90deg, #0073ea, #5b8def); color: #fff; font-size: 13.5px; font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 115, 234, .35); animation: slideUp .2s ease;
+}
+.has-bcast #shell { height: calc(100vh - 48px - 40px); }
+.bcast-ico { display: inline-flex; flex: none; opacity: .95; }
+.bcast-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bcast-by { opacity: .8; font-weight: 400; flex: none; }
+.bcast-tail { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: none; }
+.bcast-btn { display: inline-flex; align-items: center; gap: 5px; color: #fff; background: rgba(255, 255, 255, .18); border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; transition: background .15s; }
+.bcast-btn:hover { background: rgba(255, 255, 255, .3); }
+.bcast-x { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; color: #fff; opacity: .9; transition: background .15s; }
+.bcast-x:hover { background: rgba(255, 255, 255, .2); }
 /* disable ALL cell editing; only viewing + opening updates stays live */
 .board-ro .cell { pointer-events: none; }
 .board-ro .updates-chip { pointer-events: auto; }   /* still open/view updates */
