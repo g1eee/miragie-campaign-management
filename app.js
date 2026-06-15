@@ -6648,6 +6648,12 @@ function requestNotifPermission() {
 function showDesktopNotif(n) {
   try {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
+    if (n.broadcast) {
+      const by = personById(n.who);
+      const nt = new Notification("📢 Team broadcast", { body: n.preview + (by ? "\n— " + by.name : ""), tag: n.id });
+      nt.onclick = () => { window.focus(); nt.close(); };   // stays unread on purpose
+      return;
+    }
     const who = personById(n.who);
     const body = (n.preview ? "“" + n.preview + "”\n" : "") + n.task.name + " · " + n.board.name;
     const nt = new Notification((who ? who.name : "Someone") + " mentioned you", { body, tag: n.id, icon: (who && who.avatar) || undefined });
@@ -6660,9 +6666,10 @@ function syncNotifAlerts() {
   const unread = all.filter(n => !notifIsRead(n.id)).length;
   document.title = unread ? `(${unread}) miragie` : "miragie";
   maybeShowBroadcast();   // center popup for a new/unseen team broadcast
-  const pings = all.filter(n => n.ping && !notifIsRead(n.id));
-  if (notifiedPings === null) { notifiedPings = new Set(pings.map(n => n.id)); return; }  // seed; no popup on first pass
-  for (const n of pings) {
+  // desktop popups for NEW items since baseline: @mentions + team broadcasts
+  const alerts = all.filter(n => (n.ping || n.broadcast) && !notifIsRead(n.id));
+  if (notifiedPings === null) { notifiedPings = new Set(alerts.map(n => n.id)); return; }  // seed; no popup on first pass
+  for (const n of alerts) {
     if (notifiedPings.has(n.id)) continue;
     notifiedPings.add(n.id);
     showDesktopNotif(n);
