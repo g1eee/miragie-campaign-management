@@ -2462,7 +2462,13 @@ html.gated, html.gated body { overflow: hidden; }
   border-radius: 9px; background: var(--surface); outline: none; font-size: 14px;
 }
 .auth-input:focus { border-color: var(--primary); background: var(--bg); }
-.auth-msg { min-height: 16px; font-size: 12px; color: var(--danger); }
+.auth-msg { min-height: 16px; font-size: 12px; color: var(--text-2); line-height: 1.45; transition: color .15s; }
+.auth-msg-err { color: var(--danger); }
+.auth-msg-ok {
+  color: #00a862; font-weight: 600;
+  background: rgba(0, 200, 117, .12); border: 1px solid rgba(0, 200, 117, .3);
+  border-radius: 8px; padding: 8px 10px; animation: badge-pop .25s cubic-bezier(.34, 1.6, .64, 1);
+}
 .auth-btn { height: 42px; border-radius: 9px; font-weight: 600; font-size: 14px; }
 .auth-or { text-align: center; font-size: 11px; color: var(--text-2); margin: 2px 0; }
 .auth-alt {
@@ -2776,6 +2782,56 @@ input, textarea, select { border-radius: 10px; }
 
 /* pending invite row avatar */
 .pm-pend-ava { width: 30px; height: 30px; border-radius: 50%; background: var(--surface-2); color: var(--text-2); display: flex; align-items: center; justify-content: center; flex: none; }
+
+/* ============ Auth gate: more depth, less flat ============ */
+#auth-gate {
+  background:
+    radial-gradient(900px 500px at 18% -10%, rgba(155, 188, 242, .35), transparent 60%),
+    radial-gradient(800px 520px at 100% 110%, rgba(226, 200, 245, .4), transparent 55%),
+    linear-gradient(135deg, #eef1fb, #f6eefb 55%, #fbeef4);
+}
+[data-theme="dark"] #auth-gate {
+  background:
+    radial-gradient(900px 500px at 18% -10%, rgba(60, 80, 160, .4), transparent 60%),
+    radial-gradient(800px 520px at 100% 110%, rgba(90, 50, 130, .4), transparent 55%),
+    linear-gradient(135deg, #14163a, #1b1740 60%, #241634);
+}
+.auth-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .9), rgba(255, 255, 255, 0) 40%),
+    var(--bg);
+  border-color: rgba(255, 255, 255, .6);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .8) inset,
+    0 24px 70px -20px rgba(60, 40, 110, .45),
+    0 4px 14px rgba(60, 40, 110, .12);
+}
+[data-theme="dark"] .auth-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, 0) 40%), var(--bg);
+  border-color: var(--border-2);
+}
+.auth-brand-text { letter-spacing: .2px; }
+/* inputs: subtle inset depth, lift on focus */
+.auth-input {
+  box-shadow: inset 0 1px 2px rgba(60, 40, 110, .06);
+  transition: border-color .15s, box-shadow .15s, background .15s, transform .12s;
+}
+.auth-input:focus {
+  box-shadow: 0 0 0 3px var(--primary-soft), inset 0 1px 2px rgba(60, 40, 110, .04);
+}
+/* primary button: gradient + raised */
+.auth-btn {
+  background: linear-gradient(180deg, #1a86f0, var(--primary));
+  box-shadow: 0 8px 18px -6px rgba(0, 115, 234, .55), 0 1px 0 rgba(255, 255, 255, .25) inset;
+  transition: transform .12s cubic-bezier(.34, 1.5, .64, 1), box-shadow .15s, filter .15s;
+}
+.auth-btn:hover { filter: brightness(1.04); box-shadow: 0 10px 22px -6px rgba(0, 115, 234, .6), 0 1px 0 rgba(255, 255, 255, .25) inset; }
+.auth-btn:active { transform: scale(.97); }
+.auth-btn:disabled { filter: saturate(.6) brightness(1); box-shadow: none; }
+/* tabs: raised active pill */
+.auth-tabs { box-shadow: inset 0 1px 3px rgba(60, 40, 110, .08); }
+.auth-tab { transition: color .15s, transform .12s; }
+.auth-tab.active { box-shadow: 0 2px 6px rgba(60, 40, 110, .15); transform: translateY(-1px); }
 
 /* ============ Feedback / bug reports ============ */
 .fb-modal { width: 520px; max-width: calc(100vw - 24px); }

@@ -1429,17 +1429,18 @@ function renderAuthGate() {
     return raw;
   };
 
+  const setMsg = (text, kind) => { msg.textContent = text; msg.className = "auth-msg" + (kind ? " auth-msg-" + kind : ""); };
   const run = async () => {
     const e = email.value.trim(), p = pw.value;
-    if (!e || p.length < 6) { msg.textContent = "Enter an email and a password of at least 6 characters."; return; }
-    msg.textContent = "Working…";
+    if (!e || p.length < 6) { setMsg("Enter an email and a password of at least 6 characters.", "err"); return; }
+    setMsg("Working…", "");
     primary.disabled = true;
     const fn = mode === "signup" ? window.CLOUD.signUp : window.CLOUD.signIn;
     const r = await fn(e, p);
     primary.disabled = false;
-    if (r.error) { msg.textContent = friendlyErr(r.error); return; }
-    if (r.needsConfirm) { msg.textContent = "Account created — confirm via the email we sent, then sign in."; return; }
-    msg.textContent = "Signed in — loading…";
+    if (r.error) { setMsg(friendlyErr(r.error), "err"); return; }
+    if (r.needsConfirm) { setMsg("✓ Account created — confirm via the email we sent, then sign in.", "ok"); return; }
+    setMsg("✓ Signed in — loading…", "ok");
     // onAuthStateChange loads the team workspace and drops this gate
   };
   primary.addEventListener("click", run);
