@@ -5135,22 +5135,47 @@ function docViewEl(board) {
 
 /* ---------------- Render: file gallery view ---------------- */
 
+// gather every image across the board: item Files section, file-type columns,
+// and images embedded in updates.
+function collectBoardImages(board) {
+  const out = [];
+  const fileCols = (board.columns || []).filter(c => c.type === "file");
+  for (const t of allVisible(board)) {
+    for (const f of (t.files || [])) if (f.dataURL) out.push({ src: f.dataURL, name: f.name || "image", task: t, source: "Files" });
+    for (const c of fileCols) {
+      const arr = t.cells && t.cells[c.id];
+      if (Array.isArray(arr)) for (const f of arr) { const u = fileUrl(f); if (u) out.push({ src: u, name: fileName(f), task: t, source: c.name }); }
+    }
+    for (const u of (t.updates || [])) {
+      const re = /<img[^>]+src="([^"]+)"/g; let m;
+      while ((m = re.exec(u.html || ""))) out.push({ src: m[1], name: "Update image", task: t, source: "Update" });
+    }
+  }
+  return out;
+}
+
 function galleryViewEl(board) {
   const root = h("div", { class: "view-root gallery-view" });
-  const files = [];
-  for (const t of allVisible(board)) for (const f of (t.files || [])) files.push({ f, t });
-  if (!files.length) {
+  const imgs = collectBoardImages(board);
+  if (!imgs.length) {
     root.append(h("div", { class: "empty-board", style: "padding-top:46px" },
       h("div", { style: "font-size:42px;margin-bottom:10px" }, "🖼️"),
       h("div", { style: "font-size:16px;color:var(--text);margin-bottom:6px" }, "No files were found."),
-      h("div", { class: "muted" }, "Open any item, scroll to Files and upload images — they'll appear here.")));
+      h("div", { class: "muted" }, "Upload images to an item's Files, a file column, or an update — they'll all appear here.")));
     return root;
   }
+  root.append(h("div", { class: "gallery-count" }, `${imgs.length} file${imgs.length > 1 ? "s" : ""}`));
   const grid = h("div", { class: "gallery-grid" });
-  for (const { f, t } of files) {
-    const card = h("div", { class: "gallery-card", onclick: () => { ui.panel = t.id; renderPanel(); } });
-    card.append(h("div", { class: "gallery-thumb", style: "padding:0;background:var(--surface-2)" }, h("img", { src: f.dataURL, alt: f.name, style: "width:100%;height:100%;object-fit:cover" })));
-    card.append(h("div", { class: "gallery-info" }, h("b", {}, f.name), h("div", { class: "kb-meta" }, h("span", {}, t.name))));
+  for (const im of imgs) {
+    const card = h("div", { class: "gallery-card", onclick: () => { ui.panel = im.task.id; renderPanel(); } });
+    const thumb = h("div", { class: "gallery-thumb" });
+    const img = h("img", { src: im.src, alt: im.name, loading: "lazy" });
+    img.addEventListener("error", () => { thumb.classList.add("broken"); thumb.replaceChildren(ico("paperclip", 22)); });
+    thumb.append(img);
+    card.append(thumb,
+      h("div", { class: "gallery-info" },
+        h("b", { title: im.name }, im.name),
+        h("div", { class: "gallery-sub" }, h("span", { class: "gallery-src" }, im.source), h("span", { class: "gallery-task" }, im.task.name))));
     grid.append(card);
   }
   root.append(grid);
