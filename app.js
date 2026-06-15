@@ -6697,6 +6697,11 @@ function openTaskFromNotif(taskId, notifId) {
 
 function notifRow(n, close) {
   const read = notifIsRead(n.id);
+  // per-message tail: unread dot + a "mark as read" check (no navigation)
+  const tail = read ? null : h("span", { class: "notif-tail" },
+    h("span", { class: "notif-dot" }),
+    h("button", { class: "notif-read-btn", title: "Mark as read",
+      onclick: (e) => { e.stopPropagation(); markNotifRead(n.id); renderTopbar(); refreshDd(); } }, ico("check", 14)));
   if (n.broadcast) {
     const who = personById(n.who);
     const body = h("div", { class: "notif-body" },
@@ -6705,7 +6710,7 @@ function notifRow(n, close) {
       h("div", { class: "notif-meta" }, (who ? who.name : "SPV") + " · " + notifAgo(n.at)));
     return h("div", { class: "notif-item" + (read ? "" : " unread"),
       onclick: () => { markNotifRead(n.id); renderTopbar(); close(); } },
-      h("span", { class: "notif-sys-ico" }, ico("megaphone", 18)), body, read ? null : h("span", { class: "notif-dot" }));
+      h("span", { class: "notif-sys-ico" }, ico("megaphone", 18)), body, tail);
   }
   const actor = n.system
     ? h("span", { class: "notif-sys-ico" + (n.verb.includes("overdue") ? " danger" : "") },
@@ -6725,7 +6730,7 @@ function notifRow(n, close) {
   return h("div", {
     class: "notif-item" + (read ? "" : " unread") + (n.ping ? " ping" : ""),
     onclick: () => { close(); openTaskFromNotif(n.task.id, n.id); }
-  }, actor, body, read ? null : h("span", { class: "notif-dot" }));
+  }, actor, body, tail);
 }
 
 function openNotifPanel(anchor) {
