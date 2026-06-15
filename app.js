@@ -275,7 +275,10 @@ function initCloud() {
     if (u) {
       const team = await window.CLOUD.loadTeam();
       if (team && Array.isArray(team.boards)) {
-        state = team; migrate(); reconcileIdentity(); migrateCovers(); saveLocal();
+        state = team; migrate();
+        // verify against the FRESH cloud roster — a removed member is denied here
+        if (!reconcileIdentity()) { ui.noAccess = true; saveLocal(); render(); return; }
+        migrateCovers(); saveLocal();
         ui.home = true;   // land on Workspace home on first sign-in
         render();
         toast("☁ Team workspace loaded");
@@ -463,6 +466,8 @@ function migrate() {
     state.people.forEach((p, i) => { if (!p.avatar) p.avatar = ANIME_CHARS[i % ANIME_CHARS.length].img; });
     state.animeApplied = true;
   }
+  // ensure every member (incl. ones who joined after the one-time pass) has an avatar
+  state.people.forEach((p, i) => { if (!p.avatar) p.avatar = ANIME_CHARS[i % ANIME_CHARS.length].img; });
   for (const b of state.boards) {
     if (!b.workspaceId) b.workspaceId = state.workspaces[0].id;
     if (!b.kind) b.kind = "board";
@@ -685,21 +690,36 @@ function isAdmin() {
 const teamOn = () => cloudOn() && !!window.CLOUD.user();
 
 // map the signed-in email to a person in the shared workspace, so "you" + role are correct
+// Returns false when the signed-in email is NOT allowed on this team (caller
+// should gate with noAccess). Prevents a removed member from resurrecting
+// themselves just by holding a valid session + stale cache.
 function reconcileIdentity() {
-  if (!teamOn()) return;
+  if (!teamOn()) return true;
   const email = (window.CLOUD.email() || "").toLowerCase();
-  if (!email) return;
+  if (!email) return true;
+  const adminEmail = email === ADMIN_EMAIL;
   let p = state.people.find(x => (x.email || "").toLowerCase() === email);
   if (!p) {
-    // first real sign-in: promote any matching pending invite into a real member
+    // only the admin or someone with a pending invite may create an account.
+    // a previously-removed member has neither → denied (no resurrection).
     const inv = (state.invites || []).find(i => (i.email || "").toLowerCase() === email);
-    p = { id: uid(), name: (inv && inv.name) || email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase()), title: "Team member", email, role: email === ADMIN_EMAIL ? OWNER_ROLE : ((inv && inv.role) || DEFAULT_MEMBER_ROLE), color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null, allowedWs: (inv && inv.allowedWs) || null };
+    if (!adminEmail && !inv) return false;
+    p = {
+      id: uid(),
+      name: (inv && inv.name) || email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+      title: "Team member", email,
+      role: adminEmail ? OWNER_ROLE : ((inv && inv.role) || DEFAULT_MEMBER_ROLE),
+      color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length],
+      avatar: ANIME_CHARS[state.people.length % ANIME_CHARS.length].img,   // give new members a real avatar so it syncs everywhere
+      allowedWs: (inv && inv.allowedWs) || null,
+    };
     state.people.push(p);
   }
-  if (email === ADMIN_EMAIL) p.role = OWNER_ROLE;
+  if (adminEmail) p.role = OWNER_ROLE;
   // consume the pending invite — they've joined now
   if (Array.isArray(state.invites)) state.invites = state.invites.filter(i => (i.email || "").toLowerCase() !== email);
   state.user = p.id;
+  return true;
 }
 const validEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s || "").trim());
 
@@ -4654,10 +4674,12 @@ function workspaceHomeEl() {
   }
   banner.append(coverIn);
   root.append(banner);
-  // hero portrait mirrors the current user's profile character; updates when you change it
-  const heroOn = !!(me().avatar || WH_HERO);
+  // hero portrait strictly mirrors YOUR profile avatar (no misleading default) —
+  // keeps the workspace hero in sync with the topbar / member rows.
+  const heroSrc = me().avatar;
+  const heroOn = !!heroSrc;
   if (heroOn) {
-    const hero = h("img", { class: "wh-hero", src: me().avatar || WH_HERO, alt: "" });
+    const hero = h("img", { class: "wh-hero", src: heroSrc, alt: "" });
     hero.addEventListener("error", () => { hero.remove(); const hd = root.querySelector(".wh-head"); if (hd) hd.classList.remove("has-hero"); });
     root.append(hero);
   }
