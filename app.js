@@ -312,6 +312,7 @@ function initCloud() {
         // verify against the FRESH cloud roster — a removed member is denied here
         if (!reconcileIdentity()) { ui.noAccess = true; saveLocal(); render(); return; }
         migrateCovers(); saveLocal();
+        notifiedPings = null;   // reseed desktop-popup baseline from the cloud data (no popup spam on load)
         ui.home = true;   // land on Workspace home on first sign-in
         render();
         ensureTeamSubscription();   // live updates from other members
@@ -1536,6 +1537,7 @@ function renderTopbar() {
   const meBtn = q("#me-btn");
   meBtn.replaceChildren(avatarEl(me(), 30));
   renderGreeting();
+  syncNotifAlerts();   // tab-title badge + desktop popup for new @mentions
 }
 
 function avatarEl(person, size = 26) {
@@ -6133,20 +6135,31 @@ function profileMenu(anchor) {
 // Build the live notification feed from real board data:
 //  • comments posted by someone other than you   → "Mentioned"
 //  • tasks you own (assigned + overdue)           → "Assigned to me"
+// does a comment body @mention this person (by full name or first name)?
+function textMentions(text, person) {
+  if (!text || !person) return false;
+  const t = text.toLowerCase();
+  const names = [person.name, (person.name || "").split(" ")[0]].filter(Boolean);
+  return names.some(n => t.includes("@" + n.toLowerCase()));
+}
+
 function collectNotifs() {
   const out = [];
   const my = state.user;
+  const meP = me();
   for (const b of state.boards) {
     if (!wsAllowed(b.workspaceId)) continue;   // only notify on workspaces you can access
     for (const g of (b.groups || [])) {
       for (const t of g.tasks) {
         const mine = (t.owners || []).includes(my);
-        // a comment only notifies the task's owners (not every member) — excluding the author
-        if (mine) for (const u of (t.updates || [])) {
-          if (u.by && u.by !== my) {
-            out.push({ id: "c" + u.id, type: "mention", who: u.by, verb: "commented on",
-              task: t, board: b, at: u.at || t.updatedAt, preview: (u.text || "").trim().slice(0, 90) });
-          }
+        // notify on a comment when you own the task OR you were @mentioned in it (author excluded)
+        for (const u of (t.updates || [])) {
+          if (!u.by || u.by === my) continue;
+          const pinged = textMentions(u.text || "", meP);
+          if (!mine && !pinged) continue;
+          out.push({ id: "c" + u.id, type: "mention", who: u.by, ping: pinged,
+            verb: pinged ? "mentioned you in" : "commented on",
+            task: t, board: b, at: u.at || t.updatedAt, preview: (u.text || "").trim().slice(0, 90) });
         }
         if (mine) {
           out.push({ id: "a" + t.id, type: "assigned", who: t.updatedBy || b.creator || my,
@@ -6168,6 +6181,34 @@ function notifIsRead(id) { return PREFS.notifRead.includes(id); }
 function markNotifRead(id) { if (!PREFS.notifRead.includes(id)) { PREFS.notifRead.push(id); savePrefs(); } }
 function markAllNotifRead(list) { let ch = false; for (const n of list) if (!PREFS.notifRead.includes(n.id)) { PREFS.notifRead.push(n.id); ch = true; } if (ch) savePrefs(); }
 function unreadNotifCount() { return collectNotifs().filter(n => !notifIsRead(n.id)).length; }
+
+// ---- browser tab title badge + desktop popup (mentions only) ----
+let notifiedPings = null;   // ids already shown as desktop popups (null until seeded)
+function requestNotifPermission() {
+  try { if ("Notification" in window && Notification.permission === "default") Notification.requestPermission(); } catch (e) { /* ignore */ }
+}
+function showDesktopNotif(n) {
+  try {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const who = personById(n.who);
+    const body = (n.preview ? "“" + n.preview + "”\n" : "") + n.task.name + " · " + n.board.name;
+    const nt = new Notification((who ? who.name : "Someone") + " mentioned you", { body, tag: n.id, icon: (who && who.avatar) || undefined });
+    nt.onclick = () => { window.focus(); markNotifRead(n.id); ui.panel = n.task.id; renderPanel(); renderTopbar(); nt.close(); };
+  } catch (e) { /* ignore */ }
+}
+// keep the tab title in sync with unread count; pop a desktop notif for NEW @mentions
+function syncNotifAlerts() {
+  const all = collectNotifs();
+  const unread = all.filter(n => !notifIsRead(n.id)).length;
+  document.title = unread ? `(${unread}) miragie` : "miragie";
+  const pings = all.filter(n => n.ping && !notifIsRead(n.id));
+  if (notifiedPings === null) { notifiedPings = new Set(pings.map(n => n.id)); return; }  // seed; no popup on first pass
+  for (const n of pings) {
+    if (notifiedPings.has(n.id)) continue;
+    notifiedPings.add(n.id);
+    showDesktopNotif(n);
+  }
+}
 
 function notifAgo(ts) {
   if (!ts) return "";
@@ -6199,12 +6240,13 @@ function notifRow(n, close) {
     n.preview ? h("div", { class: "notif-preview" }, "“" + n.preview + "”") : null,
     h("div", { class: "notif-meta" }, n.board.name + " · " + notifAgo(n.at)));
   return h("div", {
-    class: "notif-item" + (read ? "" : " unread"),
+    class: "notif-item" + (read ? "" : " unread") + (n.ping ? " ping" : ""),
     onclick: () => { markNotifRead(n.id); ui.panel = n.task.id; renderPanel(); renderTopbar(); close(); }
   }, actor, body, read ? null : h("span", { class: "notif-dot" }));
 }
 
 function openNotifPanel(anchor) {
+  requestNotifPermission();   // ask for desktop-notification permission on this click (user gesture)
   ui.notif = ui.notif || { tab: "all", q: "", unread: false };
   openDropdown(anchor, (el, close) => {
     el.classList.add("notif-pop");
