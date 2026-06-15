@@ -507,6 +507,7 @@ function migrate() {
   if (!state.wfFired) state.wfFired = {};
   if (!Array.isArray(state.workflows)) state.workflows = [];
   if (!Array.isArray(state.feedback)) state.feedback = [];
+  if (!Array.isArray(state.invites)) state.invites = [];
   if (!Array.isArray(state.statuses) || !state.statuses.length) state.statuses = JSON.parse(JSON.stringify(DEFAULT_STATUSES));
   if (!Array.isArray(state.priorities) || !state.priorities.length) state.priorities = JSON.parse(JSON.stringify(DEFAULT_PRIORITIES));
   STATUSES = state.statuses;
@@ -690,10 +691,14 @@ function reconcileIdentity() {
   if (!email) return;
   let p = state.people.find(x => (x.email || "").toLowerCase() === email);
   if (!p) {
-    p = { id: uid(), name: email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase()), title: "Team member", email, role: email === ADMIN_EMAIL ? OWNER_ROLE : DEFAULT_MEMBER_ROLE, color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null };
+    // first real sign-in: promote any matching pending invite into a real member
+    const inv = (state.invites || []).find(i => (i.email || "").toLowerCase() === email);
+    p = { id: uid(), name: (inv && inv.name) || email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase()), title: "Team member", email, role: email === ADMIN_EMAIL ? OWNER_ROLE : ((inv && inv.role) || DEFAULT_MEMBER_ROLE), color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null, allowedWs: (inv && inv.allowedWs) || null };
     state.people.push(p);
   }
   if (email === ADMIN_EMAIL) p.role = OWNER_ROLE;
+  // consume the pending invite — they've joined now
+  if (Array.isArray(state.invites)) state.invites = state.invites.filter(i => (i.email || "").toLowerCase() !== email);
   state.user = p.id;
 }
 const validEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s || "").trim());
@@ -1836,17 +1841,51 @@ function peopleManager(anchor) {
       if (p.id !== state.user && !isOwner && admin) {
         const del = h("button", { class: "row-act", title: "Remove member" });
         del.append(ico("x", 13));
-        del.addEventListener("click", async (e) => {
+        del.addEventListener("click", (e) => {
           e.stopPropagation();
-          if (teamOn() && p.email) { const r = await window.CLOUD.removeMember(p.email); if (r.error) { toast("Remove failed: " + r.error); return; } }
-          state.people = state.people.filter(x => x.id !== p.id);
-          for (const b of state.boards) for (const g of b.groups) for (const t of g.tasks) t.owners = t.owners.filter(o => o !== p.id);
-          if (ui.person === p.id) ui.person = null;
-          save(); softRender(); peopleManager(anchor);
+          modalConfirm("Remove member?",
+            `“${p.name}” will lose access to this workspace and be removed from the team. This can't be undone.`,
+            async () => {
+              if (teamOn() && p.email) { const r = await window.CLOUD.removeMember(p.email); if (r.error) { toast("Remove failed: " + r.error); return; } }
+              state.people = state.people.filter(x => x.id !== p.id);
+              for (const b of state.boards) for (const g of b.groups) for (const t of g.tasks) t.owners = t.owners.filter(o => o !== p.id);
+              if (ui.person === p.id) ui.person = null;
+              save();
+              peopleManager(anchor);   // reopen at the still-live anchor (no full re-render → no jump)
+              toast(`${p.name} removed`);
+            }, "Remove");
         });
         row.append(del);
       }
       el.append(row);
+    }
+
+    // pending invites — people invited but not yet signed in (not real members yet)
+    const pend = state.invites || [];
+    if (pend.length) {
+      el.append(h("hr", { class: "dd-sep" }));
+      el.append(h("div", { class: "dd-title" }, "Pending invites · " + pend.length));
+      for (const inv of pend) {
+        const row = h("div", { class: "pm-row" },
+          h("span", { class: "pm-pend-ava" }, ico("mail", 14)),
+          h("div", { class: "pm-info" },
+            h("div", { class: "pm-name" }, inv.name || inv.email),
+            h("div", { class: "pm-mail" }, inv.email + " · waiting to join")),
+          h("span", { class: "ws-role-chip" }, inv.role || DEFAULT_MEMBER_ROLE));
+        if (admin) {
+          const rev = h("button", { class: "row-act", title: "Revoke invite" });
+          rev.append(ico("x", 13));
+          rev.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            if (teamOn() && inv.email) { await window.CLOUD.removeMember(inv.email); }
+            state.invites = state.invites.filter(x => x.id !== inv.id);
+            save(); refreshDd();
+            toast("Invite revoked");
+          });
+          row.append(rev);
+        }
+        el.append(row);
+      }
     }
 
     el.append(h("hr", { class: "dd-sep" }));
@@ -1891,6 +1930,7 @@ function peopleManager(anchor) {
       const email = mailIn.value.trim().toLowerCase();
       if (!validEmail(email)) { toast("Enter a valid email"); mailIn.focus(); return; }
       if (state.people.some(p => (p.email || "").toLowerCase() === email)) { toast("That email is already a member"); return; }
+      if ((state.invites || []).some(i => (i.email || "").toLowerCase() === email)) { toast("That email is already invited"); return; }
       const name = nameIn.value.trim() || email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
       const role = admin ? inviteRole : DEFAULT_MEMBER_ROLE;
       // real invite: add to the team allow-list so they can load the shared workspace
@@ -1902,10 +1942,10 @@ function peopleManager(anchor) {
         if (r.error) { toast("Invite failed: " + r.error); return; }
       }
       const allowedWs = (admin && inviteWs !== "*") ? [inviteWs] : null;
-      state.people.push({ id: uid(), name, title: "Invited member", email, role, color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null, invited: true, allowedWs });
-      nameIn.value = ""; mailIn.value = "";
-      save(); softRender(); peopleManager(anchor);
-      toast(teamOn() ? `Invited ${email} — they can now sign up & join` : `Invite sent to ${email} (demo)`);
+      // hold as a PENDING invite — only becomes a real member once they sign in
+      state.invites.push({ id: uid(), email, name, role, allowedWs, at: Date.now() });
+      save(); refreshDd();   // rebuild popover in place (clears inputs, shows pending) — no jump
+      toast(teamOn() ? `Invited ${email} — they'll appear here once they sign in` : `Invite sent to ${email} (pending until they join)`);
     };
     sendBtn.addEventListener("click", doInvite);
     mailIn.addEventListener("keydown", (e) => { if (e.key === "Enter") doInvite(); e.stopPropagation(); });
