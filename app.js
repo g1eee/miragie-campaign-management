@@ -6022,10 +6022,13 @@ function notifRow(n, close) {
     ? h("span", { class: "notif-sys-ico" + (n.verb.includes("overdue") ? " danger" : "") },
         ico(n.verb.includes("overdue") ? "clock" : "bell", 18))
     : avatarEl(personById(n.who) || me(), 36);
-  const who = n.system ? "" : (personById(n.who)?.name || "Someone");
+  // when the actor is the signed-in user, switch to first-person phrasing
+  const isSelf = !n.system && n.who === state.user;
+  const who = n.system ? "" : (isSelf ? "You" : (personById(n.who)?.name || "Someone"));
+  const verb = (isSelf && n.verb === "assigned you to") ? "assigned yourself to" : n.verb;
   const text = h("div", { class: "notif-text" },
     who ? h("b", {}, who + " ") : null,
-    h("span", {}, n.verb + " "),
+    h("span", {}, verb + " "),
     h("b", { class: "notif-link" }, n.task.name));
   const body = h("div", { class: "notif-body" }, text,
     n.preview ? h("div", { class: "notif-preview" }, "“" + n.preview + "”") : null,
