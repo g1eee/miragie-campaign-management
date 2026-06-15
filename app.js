@@ -1038,6 +1038,7 @@ function inlineEdit(holder, value, commit, opts = {}) {
 /* ---------------- Mutations ---------------- */
 
 function addTask(group, name, atTop = false) {
+  if (!canEditBoard(getBoard())) { toast("View only — ask an SPV for edit access"); return; }
   const t = mkTask(name, { by: state.user });
   if (atTop) group.tasks.unshift(t); else group.tasks.push(t);
   save();
@@ -1067,6 +1068,7 @@ function duplicateTasks(ids) {
 }
 
 function deleteTasks(ids) {
+  if (!canEditBoard(getBoard())) { toast("View only — ask an SPV for edit access"); return; }
   const snaps = [];
   for (const id of ids) {
     const loc = locateTask(id);
@@ -1849,6 +1851,7 @@ function viewBodyEl(board) {
 function boardHeadEl(board) {
   const title = h("span", { class: "board-title", title: "Click to rename" }, board.name);
   title.addEventListener("click", () => {
+    if (!canEditBoard(board)) return;
     inlineEdit(title, board.name, (v) => { board.name = v; save(); render(); }, { style: "font-size:24px;font-weight:700;max-width:480px" });
   });
 
@@ -1862,6 +1865,7 @@ function boardHeadEl(board) {
 
   const desc = h("div", { class: "board-desc", title: "Click to edit description" }, board.desc || "Add a description...");
   desc.addEventListener("click", () => {
+    if (!canEditBoard(board)) return;
     inlineEdit(desc, board.desc, (v) => { board.desc = v; save(); render(); });
   });
 
@@ -2628,6 +2632,7 @@ function groupMenu(anchor, board, group, nameEl) {
 /* ---------------- Custom columns ---------------- */
 
 function setColVal(task, col, v) {
+  if (!canEditBoard(getBoard())) { toast("View only — ask an SPV for edit access"); return; }
   if (v == null || v === "" || (Array.isArray(v) && !v.length)) delete task.cells[col.id];
   else task.cells[col.id] = v;
   touch(task);
@@ -3967,6 +3972,7 @@ function statusCellEl(task) {
 }
 
 function statusPicker(anchor, taskId) {
+  if (!canEditBoard(getBoard())) { toast("View only — ask an SPV for edit access"); return; }
   openDropdown(anchor, (el, close) => {
     for (const s of STATUSES) {
       el.append(h("div", {
@@ -4136,6 +4142,7 @@ function priorityCellEl(task) {
 }
 
 function priorityPicker(anchor, taskId) {
+  if (!canEditBoard(getBoard())) { toast("View only — ask an SPV for edit access"); return; }
   openDropdown(anchor, (el, close) => {
     for (const p of PRIORITIES) {
       el.append(h("div", {

@@ -2864,21 +2864,16 @@ input, textarea, select { border-radius: 10px; }
 
 /* ============ Board read-only (role lacks edit access) ============ */
 .view-only-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--text-2); background: var(--surface-2); border-radius: 999px; padding: 6px 12px; }
-/* disable the in-cell editors; viewing, updates and the item panel still work */
-.board-ro .cell-fill,
-.board-ro .task-name,
-.board-ro .date-cell,
-.board-ro .owner-cell,
-.board-ro .col-menu-btn,
-.board-ro .group-caret,
-.board-ro .check-col input,
-.board-ro .kb-card-add,
-.board-ro .row-act { pointer-events: none; }
+/* disable ALL cell editing; only viewing + opening updates stays live */
+.board-ro .cell { pointer-events: none; }
+.board-ro .updates-chip { pointer-events: auto; }   /* still open/view updates */
+.board-ro .group-caret { pointer-events: auto; }    /* still collapse/expand groups */
 .board-ro .add-task-row,
 .board-ro .cell.add-col,
 .board-ro .row-actions,
 .board-ro .add-group-btn,
-.board-ro .kb-add { display: none !important; }
+.board-ro .kb-add,
+.board-ro .kb-card-add { display: none !important; }
 
 /* ============ Mirror column cell ============ */
 .mirror-cell { cursor: default; }
