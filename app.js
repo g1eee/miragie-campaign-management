@@ -1430,7 +1430,6 @@ function render() {
   renderPanel();
   renderBulk();
   renderTopbar();
-  renderBroadcast();
   applyRefocus();
   renderAuthGate();
 }
@@ -1554,36 +1553,32 @@ function renderTopbar() {
   syncNotifAlerts();   // tab-title badge + desktop popup for new @mentions
 }
 
-// Team broadcast bar under the header. Dismiss (X) is per-session — it returns on
-// refresh until an SPV/owner revokes it. Posting/revoking is SPV/owner only.
-function renderBroadcast() {
+// Center-screen popup shown when a broadcast arrives while the app is open.
+// Closing (X) does NOT mark the notification read — it stays unread in the bell.
+const seenBroadcasts = new Set();
+function maybeShowBroadcast() {
   const bc = state.broadcast;
-  let bar = document.getElementById("bcast");
   const gated = cloudOn() && (!window.CLOUD.user() || ui.noAccess);
-  const show = bc && bc.text && !gated && ui.bcastHiddenId !== bc.id;
-  if (!show) { if (bar) bar.remove(); document.documentElement.classList.remove("has-bcast"); return; }
-  if (bar) bar.remove();
+  if (gated || !bc || !bc.text) return;
+  if (bc.by === state.user) return;                 // author doesn't get their own popup
+  if (notifIsRead("bc" + bc.id)) return;            // already acknowledged via notifications
+  if (seenBroadcasts.has(bc.id)) return;            // already popped this session
+  seenBroadcasts.add(bc.id);
+  showBroadcastPopup(bc);
+}
+function showBroadcastPopup(bc) {
   const who = personById(bc.by);
-  const msg = bc.text + (who ? "      —  " + who.name : "");
-  const dur = Math.max(12, Math.round(msg.length * 0.32));   // longer text scrolls a bit longer
-  const track = h("div", { class: "bcast-track", style: `animation-duration:${dur}s` },
-    h("span", {}, msg), h("span", { "aria-hidden": "true" }, msg));   // duplicate for seamless loop
-  bar = h("div", { id: "bcast" },
-    h("span", { class: "bcast-ico" }, ico("megaphone", 16)),
-    h("div", { class: "bcast-marquee" }, track));
-  const tail = h("span", { class: "bcast-tail" });
-  if (isAdmin()) {
-    const revoke = h("button", { class: "bcast-btn", title: "Revoke for everyone" }, ico("trash", 13), h("span", {}, "Revoke"));
-    revoke.addEventListener("click", () => { state.broadcast = null; save(); render(); toast("Broadcast revoked"); });
-    tail.append(revoke);
-  }
-  const x = h("button", { class: "bcast-x", title: "Dismiss (returns on refresh)" }); x.append(ico("x", 15));
-  x.addEventListener("click", () => { ui.bcastHiddenId = bc.id; renderBroadcast(); });
-  tail.append(x);
-  bar.append(tail);
-  const shell = document.getElementById("shell");
-  document.body.insertBefore(bar, shell);
-  document.documentElement.classList.add("has-bcast");
+  openModal((card, close) => {
+    card.classList.add("bcast-modal");
+    const x = h("button", { class: "icon-btn bcast-modal-x", onclick: close }); x.append(ico("x", 16));
+    card.append(x);
+    card.append(h("div", { class: "bcast-modal-ico" }, ico("megaphone", 30)));
+    card.append(h("div", { class: "bcast-modal-title" }, "Team broadcast"));
+    card.append(h("div", { class: "bcast-modal-text" }, bc.text));
+    card.append(h("div", { class: "bcast-modal-by" }, who ? "— " + who.name : ""));
+    const ok = h("button", { class: "btn-primary", onclick: close }, "Got it");
+    card.append(h("div", { class: "modal-foot", style: "justify-content:center" }, ok));
+  });
 }
 
 function broadcastModal() {
@@ -6664,6 +6659,7 @@ function syncNotifAlerts() {
   const all = collectNotifs();
   const unread = all.filter(n => !notifIsRead(n.id)).length;
   document.title = unread ? `(${unread}) miragie` : "miragie";
+  maybeShowBroadcast();   // center popup for a new/unseen team broadcast
   const pings = all.filter(n => n.ping && !notifIsRead(n.id));
   if (notifiedPings === null) { notifiedPings = new Set(pings.map(n => n.id)); return; }  // seed; no popup on first pass
   for (const n of pings) {
