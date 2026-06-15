@@ -3635,8 +3635,22 @@ function colMirrorCellEl(board, task, col) {
     for (const lk of links) { const loc = locateTask(lk.taskId); if (!loc) continue; total++; if (taskIsDone(loc.task)) done++; }
     cell.append(h("span", { class: "mirror-pill", style: `background:${done === total && total ? "#00c875" : "#fdab3d"}` }, `${done}/${total} done`));
   } else if (isLabelMirror(connBoard, id)) {
+    // group linked items by label → proportional bar, hover shows "<label> n/total (pct%)"
+    const groups = [], map = {};
+    let total = 0;
+    for (const lk of links) {
+      const loc = locateTask(lk.taskId); if (!loc) continue;
+      total++;
+      const info = mirrorLabelInfo(loc.task, id, loc.board);
+      const k = info.label + "|" + info.color;
+      if (!map[k]) { map[k] = { ...info, n: 0 }; groups.push(map[k]); }
+      map[k].n++;
+    }
     const bar = h("div", { class: "mirror-bar" });
-    for (const lk of links) { const loc = locateTask(lk.taskId); if (!loc) continue; bar.append(h("span", { class: "mirror-seg", style: `background:${mirrorLabelColor(loc.task, id, loc.board)}` })); }
+    for (const g of groups) {
+      const pct = total ? Math.round((g.n / total) * 100) : 0;
+      bar.append(h("span", { class: "mirror-seg", style: `flex:${g.n};background:${g.color}`, title: `${g.label} ${g.n}/${total} (${pct}%)` }));
+    }
     cell.append(bar);
   } else {
     const wrap = h("div", { class: "mirror-wrap" });
@@ -3664,12 +3678,16 @@ function isLabelMirror(connBoard, colId) {
   const cc = (connBoard && connBoard.columns || []).find(c => c.id === colId);
   return !!(cc && LABEL_TYPES.includes(cc.type));
 }
-function mirrorLabelColor(lt, colId, lb) {
-  if (colId === "status") return statusOf(lt).color;
-  if (colId === "priority") return prioOf(lt).color;
+function mirrorLabelColor(lt, colId, lb) { return mirrorLabelInfo(lt, colId, lb).color; }
+function mirrorLabelInfo(lt, colId, lb) {
+  if (colId === "status") { const s = statusOf(lt); return { label: s.label || "Blank", color: s.color }; }
+  if (colId === "priority") { const p = prioOf(lt); return { label: p.label || "Blank", color: p.color }; }
   const cc = (lb.columns || []).find(c => c.id === colId);
-  if (cc && LABEL_TYPES.includes(cc.type)) { const lab = (cc.labels || []).find(l => l.id === (lt.cells ? lt.cells[colId] : undefined)); return lab ? lab.color : "#c4c4c4"; }
-  return "#c4c4c4";
+  if (cc && LABEL_TYPES.includes(cc.type)) {
+    const lab = (cc.labels || []).find(l => l.id === (lt.cells ? lt.cells[colId] : undefined));
+    return lab ? { label: lab.label || "Blank", color: lab.color } : { label: "Blank", color: "#c4c4c4" };
+  }
+  return { label: "—", color: "#c4c4c4" };
 }
 
 function mirrorSettingsModal(board, col) {
