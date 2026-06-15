@@ -2859,6 +2859,8 @@ input, textarea, select { border-radius: 10px; }
 .connect-row input { width: 15px; height: 15px; accent-color: var(--primary); }
 .connect-add { display: flex; align-items: center; gap: 8px; padding: 8px; margin-top: 4px; border-radius: 7px; cursor: pointer; color: var(--primary); font-size: 13px; font-weight: 600; }
 .connect-add:hover { background: var(--primary-soft); }
+.mirror-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.mirror-row-lbl { font-size: 12px; font-weight: 600; color: var(--text-2); flex: none; min-width: 44px; }
 
 /* ============ Mirror column cell ============ */
 .mirror-cell { cursor: default; }

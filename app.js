@@ -519,6 +519,7 @@ function migrate() {
     if (b.doc == null) b.doc = "";
     if (!Array.isArray(b.widgets)) b.widgets = [];
     if (!Array.isArray(b.columns)) b.columns = [];
+    b.columns.forEach(c => { if (c.type === "mirror") c.name = "Mirror"; });   // mirror column is always named "Mirror"
     if (!b.colNames) b.colNames = {};
     if (!b.chartConfig) b.chartConfig = { chartType: "donut", metric: "status" };
     if (!b.createdAt) b.createdAt = Date.now();
@@ -3450,26 +3451,28 @@ function connectBoardSettings(board, col) {
     const drawMirrors = () => {
       mHost.replaceChildren();
       const tb = state.boards.find(b => b.id === col.connectBoardId);
+      if (!tb) { mHost.append(h("p", { class: "muted", style: "font-size:12px" }, "Pick a board first.")); return; }
       const mirrors = board.columns.filter(c => c.type === "mirror" && c.mirrorConnectId === col.id);
       for (const m of mirrors) {
-        const edit = h("button", { class: "row-act", title: "Choose column", onclick: () => { close(); mirrorSettingsModal(board, m); } }, ico("gear", 14));
-        const del = h("button", { class: "row-act", title: "Remove", onclick: () => { removeMirrorByCol(board, m); save(); render(); drawMirrors(); } }, ico("trash", 13));
-        mHost.append(h("div", { class: "connect-row", style: "justify-content:space-between" },
-          h("span", { style: "flex:1" }, m.name + " · " + mirrorTargetLabel(tb, m.mirrorColId)),
-          h("span", { style: "display:flex;gap:2px" }, edit, del)));
+        // inline picker: choose which sub-item (column of the target board) to mirror.
+        // The column itself is always named "Mirror" — only its CONTENT follows the pick.
+        const seln = h("select", { class: "cvr-sel", style: "flex:1" });
+        for (const [id, label] of MIRROR_SYS) seln.append(h("option", { value: id }, label));
+        for (const c of (tb.columns || []).filter(c => c.type !== "mirror" && c.type !== "connect")) seln.append(h("option", { value: c.id }, c.name));
+        seln.value = m.mirrorColId || "status";
+        seln.addEventListener("change", () => { m.mirrorColId = seln.value; m.name = "Mirror"; save(); render(); });
+        const del = h("button", { class: "row-act", title: "Remove mirror", onclick: () => { removeMirrorByCol(board, m); save(); render(); drawMirrors(); } }, ico("trash", 13));
+        mHost.append(h("div", { class: "mirror-row" }, h("span", { class: "mirror-row-lbl" }, "Mirror"), seln, del));
       }
-      const addBtn = h("div", { class: "connect-add", onclick: () => {
-        if (!col.connectBoardId) { toast("Pick a board first"); return; }
-        const m = addMirrorColumn(board, col, "status", "Mirror");
-        save(); render(); close(); if (m) mirrorSettingsModal(board, m);
-      } }, ico("plus", 13), h("span", {}, "Add mirror column"));
+      const addBtn = h("div", { class: "connect-add", onclick: () => { addMirrorColumn(board, col, "status", "Mirror"); save(); render(); drawMirrors(); } },
+        ico("plus", 13), h("span", {}, "Add mirror column"));
       mHost.append(addBtn);
     };
     sel.addEventListener("change", () => {
       col.connectBoardId = sel.value || null;
-      // first time a board is connected → auto-add an "Item name" mirror so something shows
+      // first connect → auto-add one Mirror column so the pick-a-sub-item option shows
       if (col.connectBoardId && !board.columns.some(c => c.type === "mirror" && c.mirrorConnectId === col.id))
-        addMirrorColumn(board, col, "name", "Item name");
+        addMirrorColumn(board, col, "status", "Mirror");
       save(); render(); drawMirrors();
     });
     drawMirrors();
@@ -3598,9 +3601,7 @@ function mirrorSettingsModal(board, col) {
     ok.addEventListener("click", () => {
       col.mirrorConnectId = connSel.value;
       col.mirrorColId = colSel.value;
-      const cc = connCols.find(c => c.id === connSel.value);
-      const tb = cc && state.boards.find(b => b.id === cc.connectBoardId);
-      col.name = mirrorTargetLabel(tb, colSel.value);   // header reflects the mirrored column
+      col.name = "Mirror";   // column stays named "Mirror"; only its content follows the pick
       save(); close(); render();
     });
     card.append(h("div", { class: "modal-foot" }, h("button", { class: "modal-cancel", onclick: close }, "Cancel"), ok));
