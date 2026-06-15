@@ -5135,20 +5135,20 @@ function docViewEl(board) {
 
 /* ---------------- Render: file gallery view ---------------- */
 
-// gather every file across the board: item Files section, "files" columns,
+// gather every IMAGE across the board: item Files section, "files" columns,
 // and images embedded in updates.
-function collectBoardFiles(board) {
+function collectBoardImages(board) {
   const out = [];
   const fileCols = (board.columns || []).filter(c => c.type === "files");
   for (const t of allVisible(board)) {
-    for (const f of (t.files || [])) if (f.dataURL) out.push({ file: { name: f.name, url: f.dataURL, kind: "image" }, task: t, source: "Files" });
+    for (const f of (t.files || [])) if (f.dataURL) out.push({ url: f.dataURL, name: f.name || "image", task: t, source: "Files" });
     for (const c of fileCols) {
       const arr = t.cells && t.cells[c.id];
-      if (Array.isArray(arr)) for (const f of arr) out.push({ file: f, task: t, source: c.name });
+      if (Array.isArray(arr)) for (const f of arr) if (fileIsImg(f)) out.push({ url: fileUrl(f), name: fileName(f), task: t, source: c.name });
     }
     for (const u of (t.updates || [])) {
       const re = /<img[^>]+src="([^"]+)"/g; let m;
-      while ((m = re.exec(u.html || ""))) out.push({ file: { name: "Update image", url: m[1], kind: "image" }, task: t, source: "Update" });
+      while ((m = re.exec(u.html || ""))) out.push({ url: m[1], name: "Update image", task: t, source: "Update" });
     }
   }
   return out;
@@ -5156,36 +5156,46 @@ function collectBoardFiles(board) {
 
 function galleryViewEl(board) {
   const root = h("div", { class: "view-root gallery-view" });
-  const items = collectBoardFiles(board);
-  if (!items.length) {
+  const imgs = collectBoardImages(board);
+  if (!imgs.length) {
     root.append(h("div", { class: "empty-board", style: "padding-top:46px" },
       h("div", { style: "font-size:42px;margin-bottom:10px" }, "🖼️"),
-      h("div", { style: "font-size:16px;color:var(--text);margin-bottom:6px" }, "No files were found."),
-      h("div", { class: "muted" }, "Upload files to an item's Files, a Files column, or an update — they'll all appear here.")));
+      h("div", { style: "font-size:16px;color:var(--text);margin-bottom:6px" }, "No images were found."),
+      h("div", { class: "muted" }, "Upload images to an item's Files, a Files column, or an update — they'll appear here.")));
     return root;
   }
-  root.append(h("div", { class: "gallery-count" }, `${items.length} file${items.length > 1 ? "s" : ""}`));
-  const grid = h("div", { class: "gallery-grid" });
-  for (const it of items) {
-    const f = it.file, name = fileName(f), url = fileUrl(f);
-    const card = h("div", { class: "gallery-card", onclick: () => { ui.panel = it.task.id; renderPanel(); } });
-    const thumb = h("div", { class: "gallery-thumb" });
-    if (fileIsImg(f) && url) {
-      const img = h("img", { src: url, alt: name, loading: "lazy" });
-      img.addEventListener("error", () => { thumb.classList.add("ph"); thumb.replaceChildren(ico("paperclip", 24)); });
-      thumb.append(img);
-    } else {
-      thumb.classList.add("ph");
-      thumb.append(ico(f && f.kind === "doc" ? "doc" : url ? "link" : "paperclip", 24));
-    }
-    card.append(thumb,
-      h("div", { class: "gallery-info" },
-        h("b", { title: name }, name),
-        h("div", { class: "gallery-sub" }, h("span", { class: "gallery-src" }, it.source), h("span", { class: "gallery-task" }, it.task.name))));
-    grid.append(card);
+  root.append(h("div", { class: "gallery-count" }, `Showing ${imgs.length} image${imgs.length > 1 ? "s" : ""}`));
+  const list = h("div", { class: "gallery-list" });
+  for (const im of imgs) {
+    const thumb = h("button", { class: "gfile-thumb", title: "Preview", onclick: () => imageLightbox(im) });
+    thumb.append(h("img", { src: im.url, alt: im.name, loading: "lazy" }));
+    const dl = h("a", { class: "gfile-dl", href: im.url, download: im.name, title: "Download", onclick: (e) => e.stopPropagation() });
+    dl.append(ico("download", 16));
+    const row = h("div", { class: "gfile-row" },
+      thumb,
+      h("div", { class: "gfile-info" },
+        h("b", { class: "gfile-name", title: im.name }, im.name),
+        h("div", { class: "gfile-meta" }, h("span", { class: "gallery-src" }, im.source), h("span", { class: "gfile-task", onclick: () => { ui.panel = im.task.id; renderPanel(); } }, im.task.name))),
+      dl);
+    list.append(row);
   }
-  root.append(grid);
+  root.append(list);
   return root;
+}
+
+// simple full-screen image preview with download
+function imageLightbox(im) {
+  openModal((card, close) => {
+    card.classList.add("lightbox-card");
+    const head = h("div", { class: "lightbox-head" },
+      h("b", { class: "lightbox-name", title: im.name }, im.name));
+    const dl = h("a", { class: "btn-invite", href: im.url, download: im.name }, ico("download", 15), h("span", {}, "Download"));
+    const x = h("button", { class: "icon-btn", onclick: close }); x.append(ico("x", 16));
+    head.append(h("span", { class: "lightbox-actions" }, dl, x));
+    card.append(head);
+    card.append(h("div", { class: "lightbox-body" }, h("img", { src: im.url, alt: im.name })));
+    card.append(h("div", { class: "lightbox-foot" }, h("span", { class: "gallery-src" }, im.source), h("span", { class: "muted" }, im.task.name)));
+  });
 }
 
 /* ---------------- Render: workspace home ---------------- */
