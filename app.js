@@ -271,10 +271,11 @@ function initCloud() {
     cloudUserId = u ? u.id : null;
     if (sameUser) return;
     ui.noAccess = false;
+    loadPrefs();   // prefs key depends on the signed-in email — reload on user change
     if (u) {
       const team = await window.CLOUD.loadTeam();
       if (team && Array.isArray(team.boards)) {
-        state = team; migrate(); reconcileIdentity(); saveLocal();
+        state = team; migrate(); reconcileIdentity(); migrateCovers(); saveLocal();
         ui.home = true;   // land on Workspace home on first sign-in
         render();
         toast("☁ Team workspace loaded");
@@ -334,7 +335,92 @@ function load() {
   } catch (e) { /* corrupted -> reseed */ }
   state = parsed || seed();
   migrate();
+  loadPrefs();
+  migrateCovers();
   save();
+}
+
+/* ---------------- Per-user personal prefs ----------------
+   Cover image, notification read-state and other personal view settings must
+   NOT live in the shared team blob — every member writes the same team_state
+   row, so anything stored there leaks to everyone. Keep them in localStorage,
+   namespaced by the signed-in email, and never push them to the cloud. */
+let PREFS = { covers: {}, notifRead: [] };
+function prefsKey() {
+  const email = (cloudOn() && window.CLOUD.user()) ? (window.CLOUD.email() || "").toLowerCase() : "local";
+  return "miragie_prefs_" + email;
+}
+function loadPrefs() {
+  let p = null;
+  try { p = JSON.parse(localStorage.getItem(prefsKey())); } catch (e) { /* ignore */ }
+  PREFS = p || {};
+  if (!PREFS.covers || typeof PREFS.covers !== "object") PREFS.covers = {};
+  if (!Array.isArray(PREFS.notifRead)) PREFS.notifRead = [];
+}
+function savePrefs() { try { localStorage.setItem(prefsKey(), JSON.stringify(PREFS)); } catch (e) { /* quota */ } }
+
+// One-time: pull any cover that used to live in the shared blob into the current
+// admin's personal prefs, then strip it from every workspace so it stops leaking.
+function migrateCovers() {
+  let touched = false;
+  for (const w of state.workspaces || []) {
+    if (w.cover) {
+      if (isAdmin() && !PREFS.covers[w.id]) { PREFS.covers[w.id] = { url: w.cover, pos: w.coverPos || { y: 50 } }; touched = true; }
+      delete w.cover; delete w.coverPos;
+    } else if (w.coverPos) { delete w.coverPos; }
+  }
+  if (touched) savePrefs();
+}
+
+/* ---------------- Per-member workspace access ----------------
+   Admin (SPV/owner) sees every workspace. Invited members can be scoped via
+   person.allowedWs (array of workspace ids). Missing/null = full access so
+   legacy members keep working. */
+function wsAllowed(wsId) {
+  if (isAdmin()) return true;
+  const u = me();
+  if (!u || !Array.isArray(u.allowedWs)) return true;
+  return u.allowedWs.includes(wsId);
+}
+function visibleWorkspaces() { return state.workspaces.filter(w => wsAllowed(w.id)); }
+// keep the active workspace inside the member's allowed set
+function ensureAccessibleWorkspace() {
+  if (wsAllowed(state.activeWorkspace)) return;
+  const first = visibleWorkspaces()[0];
+  if (first) { state.activeWorkspace = first.id; const b = wsBoards()[0]; state.activeBoard = b ? b.id : null; }
+}
+
+// simple confirm dialog (used by destructive actions like delete workspace)
+function modalConfirm(title, message, onOk, okLabel = "Delete") {
+  openModal((card, close) => {
+    card.append(h("div", { class: "modal-head" }, h("div", { class: "ip-title" }, title)));
+    card.append(h("div", { class: "modal-body" }, h("p", { class: "muted", style: "line-height:1.5" }, message)));
+    const ok = h("button", { class: "btn-primary", style: "background:var(--danger)" }, okLabel);
+    ok.addEventListener("click", () => { close(); onOk(); });
+    card.append(h("div", { class: "modal-foot" }, h("button", { class: "modal-cancel", onclick: close }, "Cancel"), ok));
+  });
+}
+
+function deleteWorkspace(wsId) {
+  if (!isAdmin()) { toast("Only the admin can delete workspaces"); return; }
+  if (state.workspaces.length <= 1) { toast("Can't delete the only workspace"); return; }
+  const w = state.workspaces.find(x => x.id === wsId);
+  if (!w) return;
+  const n = state.boards.filter(b => b.workspaceId === wsId).length;
+  modalConfirm("Delete workspace?",
+    `“${w.name}” and its ${n} board(s) will be permanently deleted. This cannot be undone.`,
+    () => {
+      state.boards = state.boards.filter(b => b.workspaceId !== wsId);
+      state.workspaces = state.workspaces.filter(x => x.id !== wsId);
+      if (PREFS.covers[wsId]) { delete PREFS.covers[wsId]; savePrefs(); }
+      if (state.activeWorkspace === wsId) {
+        state.activeWorkspace = state.workspaces[0].id;
+        const b = wsBoards()[0]; state.activeBoard = b ? b.id : null;
+      }
+      ui.home = true;
+      save(); render();
+      toast(`Workspace “${w.name}” deleted`);
+    });
 }
 
 // Backfill fields added in later versions so old localStorage keeps working.
@@ -1117,14 +1203,19 @@ function workspaceMenu(anchor) {
     const draw = () => {
       listHost.replaceChildren();
       const f = si.value.toLowerCase();
-      const matches = state.workspaces.filter(w => w.name.toLowerCase().includes(f));
+      const matches = visibleWorkspaces().filter(w => w.name.toLowerCase().includes(f));
       listHost.append(h("div", { class: "ws-dd-section" }, "My workspaces"));
       for (const w of matches) {
         const active = w.id === state.activeWorkspace;
-        const it = h("div", { class: "dd-item" + (active ? "" : ""), style: active ? "background:var(--primary-selected)" : "", onclick: () => { close(); switchWorkspace(w.id); } },
+        const it = h("div", { class: "dd-item ws-dd-item", style: active ? "background:var(--primary-selected)" : "", onclick: () => { close(); switchWorkspace(w.id); } },
           h("span", { class: "ws-dd-logo", style: `background:${w.color};color:${textColorOn(w.color)}` }, wsGlyph(w, 15)),
           h("span", { style: "flex:1" }, w.name),
           active ? ico("check", 14) : null);
+        if (isAdmin() && state.workspaces.length > 1) {
+          const del = h("button", { class: "ws-dd-del", title: "Delete workspace",
+            onclick: (e) => { e.stopPropagation(); close(); deleteWorkspace(w.id); } }, ico("trash", 13));
+          it.append(del);
+        }
         listHost.append(it);
       }
       if (!matches.length) listHost.append(h("div", { class: "dd-item disabled" }, "No workspaces found"));
@@ -1258,6 +1349,7 @@ function visibleTasks(group) {
 
 function render() {
   closeDropdowns();
+  ensureAccessibleWorkspace();   // keep scoped members out of workspaces they can't see
   renderSidebar();
   renderMain();
   renderPanel();
@@ -1777,6 +1869,22 @@ function peopleManager(anchor) {
       roleSel.title = "Only admin can assign roles";
     }
 
+    // workspace scope — invited member only sees the chosen workspace (admin only)
+    let inviteWs = state.activeWorkspace;
+    const wsLabel = (id) => id === "*" ? "All workspaces" : ((state.workspaces.find(w => w.id === id) || {}).name || "Workspace");
+    const wsSel = h("button", { class: "pm-invite-role" }, wsLabel(inviteWs), ico("chevDown", 12));
+    if (admin) {
+      wsSel.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const opts = [{ label: "All workspaces", value: "*", check: inviteWs === "*" }]
+          .concat(state.workspaces.map(w => ({ label: w.name, value: w.id, check: inviteWs === w.id })));
+        nestedMenu(wsSel, opts, (o) => { inviteWs = o.value; wsSel.replaceChildren(wsLabel(o.value), ico("chevDown", 12)); });
+      });
+    } else {
+      wsSel.classList.add("disabled");
+      wsSel.title = "Only admin can choose the workspace";
+    }
+
     const sendBtn = h("button", { class: "btn-primary", style: "padding:7px 14px" }, "Send invite");
     const doInvite = async () => {
       const email = mailIn.value.trim().toLowerCase();
@@ -1792,7 +1900,8 @@ function peopleManager(anchor) {
         sendBtn.textContent = "Send invite";
         if (r.error) { toast("Invite failed: " + r.error); return; }
       }
-      state.people.push({ id: uid(), name, title: "Invited member", email, role, color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null, invited: true });
+      const allowedWs = (admin && inviteWs !== "*") ? [inviteWs] : null;
+      state.people.push({ id: uid(), name, title: "Invited member", email, role, color: AVATAR_COLORS[state.people.length % AVATAR_COLORS.length], avatar: null, invited: true, allowedWs });
       nameIn.value = ""; mailIn.value = "";
       save(); softRender(); peopleManager(anchor);
       toast(teamOn() ? `Invited ${email} — they can now sign up & join` : `Invite sent to ${email} (demo)`);
@@ -1801,8 +1910,11 @@ function peopleManager(anchor) {
     mailIn.addEventListener("keydown", (e) => { if (e.key === "Enter") doInvite(); e.stopPropagation(); });
     nameIn.addEventListener("keydown", (e) => e.stopPropagation());
 
-    el.append(h("div", { class: "pm-invite" }, nameIn, h("div", { class: "pm-invite-row" }, mailIn, roleSel), sendBtn));
-    el.append(h("div", { class: "pm-note" }, "Invited members can use boards but can't create new workspaces."));
+    el.append(h("div", { class: "pm-invite" }, nameIn,
+      h("div", { class: "pm-invite-row" }, mailIn, roleSel),
+      h("div", { class: "pm-invite-ws" }, h("span", { class: "pm-ws-lbl" }, "Workspace"), wsSel),
+      sendBtn));
+    el.append(h("div", { class: "pm-note" }, "Invited members can use boards in the workspace you choose, but can't create new workspaces."));
   }, { minWidth: 300, alignRight: true });
 }
 
@@ -4453,32 +4565,35 @@ function galleryViewEl(board) {
 function workspaceHomeEl() {
   const w = getWorkspace();
   const root = h("div", { class: "view-root wh" });
-  // ---- cover banner (per-workspace upload + drag-to-reposition; falls back to cover.jpg / gradient)
-  const posY = (w.coverPos && typeof w.coverPos.y === "number") ? w.coverPos.y : 50;
-  const banner = h("div", { class: "wh-banner" + (ui.coverEditing && w.cover ? " repositioning" : "") });
-  if (w.cover) { banner.style.backgroundImage = `url("${w.cover}")`; banner.style.backgroundPosition = `center ${posY}%`; }
+  // ---- cover banner (PERSONAL per user: stored in local prefs, never shared)
+  const cover = PREFS.covers[w.id] || null;
+  const coverUrl = cover ? cover.url : null;
+  const posY = (cover && cover.pos && typeof cover.pos.y === "number") ? cover.pos.y : 50;
+  const banner = h("div", { class: "wh-banner" + (ui.coverEditing && coverUrl ? " repositioning" : "") });
+  if (coverUrl) { banner.style.backgroundImage = `url("${coverUrl}")`; banner.style.backgroundPosition = `center ${posY}%`; }
   const coverIn = h("input", { type: "file", accept: "image/*", style: "display:none" });
   coverIn.addEventListener("change", () => {
     const f = coverIn.files[0]; if (!f) return;
-    scaleImageWide(f, 1600, (url) => { w.cover = url; w.coverPos = { y: 50 }; save(); render(); toast("Cover updated"); });
+    scaleImageWide(f, 1600, (url) => { PREFS.covers[w.id] = { url, pos: { y: 50 } }; savePrefs(); render(); toast("Cover updated"); });
     coverIn.value = "";
   });
 
-  if (ui.coverEditing && w.cover) {
+  if (ui.coverEditing && coverUrl) {
     banner.append(h("div", { class: "wh-cover-hint" }, ico("move", 15), h("span", {}, "Drag the image up / down to reposition")));
-    const doneBtn = h("button", { class: "wh-cover-edit wh-cover-done", onclick: (e) => { e.stopPropagation(); ui.coverEditing = false; save(); renderMain(); toast("Cover saved"); } }, ico("check", 15), h("span", {}, "Done"));
+    const doneBtn = h("button", { class: "wh-cover-edit wh-cover-done", onclick: (e) => { e.stopPropagation(); ui.coverEditing = false; savePrefs(); renderMain(); toast("Cover saved"); } }, ico("check", 15), h("span", {}, "Done"));
     banner.append(doneBtn);
     // vertical drag → background-position-y %
     banner.addEventListener("mousedown", (e) => {
       e.preventDefault();
-      const startY = e.clientY, start = (w.coverPos && typeof w.coverPos.y === "number") ? w.coverPos.y : 50;
+      const cv = PREFS.covers[w.id]; if (!cv) return;
+      const startY = e.clientY, start = (cv.pos && typeof cv.pos.y === "number") ? cv.pos.y : 50;
       const move = (ev) => {
         let p = start - ((ev.clientY - startY) / banner.offsetHeight) * 100;
         p = Math.max(0, Math.min(100, p));
-        w.coverPos = { y: p };
+        cv.pos = { y: p };
         banner.style.backgroundPosition = `center ${p}%`;
       };
-      const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); save(); };
+      const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); savePrefs(); };
       document.addEventListener("mousemove", move);
       document.addEventListener("mouseup", up);
     });
@@ -4486,10 +4601,10 @@ function workspaceHomeEl() {
     const coverBtn = h("button", { class: "wh-cover-edit", title: "Change cover" }, ico("camera", 15), h("span", {}, "Edit cover"));
     coverBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (w.cover) openDropdown(coverBtn, (el, close) => {
+      if (coverUrl) openDropdown(coverBtn, (el, close) => {
         el.append(ddItem("camera", "Replace cover", () => { close(); coverIn.click(); }));
         el.append(ddItem("move", "Reposition", () => { close(); ui.coverEditing = true; renderMain(); }));
-        el.append(ddItem("trash", "Remove cover", () => { close(); w.cover = null; w.coverPos = null; save(); render(); toast("Cover removed"); }, "danger"));
+        el.append(ddItem("trash", "Remove cover", () => { close(); delete PREFS.covers[w.id]; savePrefs(); render(); toast("Cover removed"); }, "danger"));
       }, { alignRight: true, minWidth: 180 });
       else coverIn.click();
     });
@@ -4639,7 +4754,10 @@ function memberProfilePopover(anchor, p) {
     el.append(h("div", { class: "mp-field" }, ico("mail", 14), h("a", { class: "mp-mail", href: "mailto:" + p.email }, p.email)));
     el.append(h("div", { class: "mp-field" }, ico("badge", 14), h("span", {}, "Workspace role: "), h("span", { class: "ws-role-chip" }, p.role || DEFAULT_MEMBER_ROLE)));
     el.append(h("hr", { class: "dd-sep" }));
-    el.append(ddItem("smile", "Change anime character", () => characterPicker(anchor, p)));
+    // profile photo is a personal setting — only the owner of the account can change it
+    if (p.id === state.user) el.append(ddItem("smile", "Change anime character", () => characterPicker(anchor, p)));
+    else el.append(h("div", { class: "dd-item disabled", title: "Profile photo can only be changed by its owner" },
+      ico("person", 14), h("span", {}, "Photo managed by " + (p.name || "member").split(" ")[0])));
   }, { minWidth: 250 });
 }
 
@@ -5854,15 +5972,18 @@ function collectNotifs() {
   const out = [];
   const my = state.user;
   for (const b of state.boards) {
+    if (!wsAllowed(b.workspaceId)) continue;   // only notify on workspaces you can access
     for (const g of (b.groups || [])) {
       for (const t of g.tasks) {
-        for (const u of (t.updates || [])) {
+        const mine = (t.owners || []).includes(my);
+        // a comment only notifies the task's owners (not every member) — excluding the author
+        if (mine) for (const u of (t.updates || [])) {
           if (u.by && u.by !== my) {
             out.push({ id: "c" + u.id, type: "mention", who: u.by, verb: "commented on",
               task: t, board: b, at: u.at || t.updatedAt, preview: (u.text || "").trim().slice(0, 90) });
           }
         }
-        if ((t.owners || []).includes(my)) {
+        if (mine) {
           out.push({ id: "a" + t.id, type: "assigned", who: t.updatedBy || b.creator || my,
             verb: "assigned you to", task: t, board: b, at: t.updatedAt || t.createdAt });
           if (t.due && t.status !== "done" && t.due < todayISO()) {
@@ -5877,10 +5998,10 @@ function collectNotifs() {
   return out;
 }
 
-function notifReadSet() { if (!Array.isArray(state.notifRead)) state.notifRead = []; return state.notifRead; }
-function notifIsRead(id) { return notifReadSet().includes(id); }
-function markNotifRead(id) { const s = notifReadSet(); if (!s.includes(id)) { s.push(id); save(); } }
-function markAllNotifRead(list) { const s = notifReadSet(); for (const n of list) if (!s.includes(n.id)) s.push(n.id); save(); }
+// read-state is PERSONAL — kept in per-user prefs, never in the shared blob
+function notifIsRead(id) { return PREFS.notifRead.includes(id); }
+function markNotifRead(id) { if (!PREFS.notifRead.includes(id)) { PREFS.notifRead.push(id); savePrefs(); } }
+function markAllNotifRead(list) { let ch = false; for (const n of list) if (!PREFS.notifRead.includes(n.id)) { PREFS.notifRead.push(n.id); ch = true; } if (ch) savePrefs(); }
 function unreadNotifCount() { return collectNotifs().filter(n => !notifIsRead(n.id)).length; }
 
 function notifAgo(ts) {

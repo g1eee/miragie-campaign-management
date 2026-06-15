@@ -2758,3 +2758,18 @@ input, textarea, select { border-radius: 10px; }
   display: flex; align-items: center; justify-content: center; border: 2px solid var(--bg);
   animation: badge-pop .25s cubic-bezier(.34, 1.6, .64, 1);
 }
+
+/* ============ Workspace menu: delete on hover ============ */
+.ws-dd-item { position: relative; }
+.ws-dd-del {
+  opacity: 0; flex: none; width: 24px; height: 24px; border-radius: 6px; color: var(--text-2);
+  display: inline-flex; align-items: center; justify-content: center; transition: opacity .12s, background .12s, color .12s, transform .12s;
+}
+.ws-dd-item:hover .ws-dd-del { opacity: 1; }
+.ws-dd-del:hover { background: rgba(226, 68, 92, .14); color: var(--danger); }
+.ws-dd-del:active { transform: scale(.88); }
+
+/* ============ Invite: workspace scope row ============ */
+.pm-invite-ws { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.pm-ws-lbl { font-size: 12px; color: var(--text-2); flex: none; }
+.pm-invite-ws .pm-invite-role { flex: 1; justify-content: space-between; }
