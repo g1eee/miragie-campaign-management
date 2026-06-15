@@ -1433,7 +1433,7 @@ function renderAuthGate() {
   card.append(tabs);
 
   card.append(h("p", { class: "auth-sub" }, mode === "signup"
-    ? "Were you invited? Enter the email you were invited with and choose a password — this creates your account."
+    ? "Were you invited? Enter the email you were invited with and choose a password — you'll be signed in straight away. No confirmation email needed."
     : "Sign in with your team email and password."));
 
   const email = h("input", { type: "email", class: "auth-input", placeholder: "you@email.com", autocomplete: "email" });
@@ -1459,8 +1459,10 @@ function renderAuthGate() {
     const r = await fn(e, p);
     primary.disabled = false;
     if (r.error) { setMsg(friendlyErr(r.error), "err"); return; }
-    if (r.needsConfirm) { setMsg("✓ Account created — confirm via the email we sent, then sign in.", "ok"); return; }
-    setMsg("✓ Signed in — loading…", "ok");
+    // confirmation is disabled on the project — signUp returns a session and we go
+    // straight in. (Kept as a fallback in case an admin re-enables email confirm.)
+    if (r.needsConfirm) { setMsg("✓ Account created — check your email to confirm, then sign in.", "ok"); return; }
+    setMsg(mode === "signup" ? "✓ Account created — signing you in…" : "✓ Signed in — loading…", "ok");
     // onAuthStateChange loads the team workspace and drops this gate
   };
   primary.addEventListener("click", run);
