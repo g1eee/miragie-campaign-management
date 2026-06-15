@@ -101,6 +101,20 @@
       } catch (e) { console.warn("team save", e); }
     },
 
+    // Live updates: fire cb(data) whenever the shared team row changes (any member's save).
+    subscribeTeam(cb) {
+      if (!client || !user) return null;
+      try {
+        const ch = client
+          .channel("team_state_main")
+          .on("postgres_changes", { event: "*", schema: "public", table: TEAM, filter: "id=eq.main" },
+            (payload) => { const d = payload && payload.new && payload.new.data; if (d) cb(d); })
+          .subscribe();
+        return ch;
+      } catch (e) { console.warn("team subscribe", e); return null; }
+    },
+    unsubscribe(ch) { try { if (client && ch) client.removeChannel(ch); } catch (e) { /* ignore */ } },
+
     /* ---------- Team membership / roles (team_members) ---------- */
     async listMembers() {
       if (!client || !user) return [];

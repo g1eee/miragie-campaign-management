@@ -248,13 +248,44 @@ const ui = {
 
 let cloudTimer = null;
 function saveLocal() { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+// unique per browser tab — lets us recognise (and skip) our own realtime echo
+const CLIENT_ID = Math.random().toString(36).slice(2, 10);
 function save() {
   saveLocal();
   if (typeof window !== "undefined" && window.CLOUD && window.CLOUD.available() && window.CLOUD.user()) {
     clearTimeout(cloudTimer);
-    // shared team workspace (all members write the same row)
+    // shared team workspace (all members write the same row).
+    // stamp the writer so the realtime listener can ignore its own push.
+    state._writer = CLIENT_ID; state._ts = Date.now();
     cloudTimer = setTimeout(() => window.CLOUD.saveTeam(state), 800);
   }
+}
+
+let teamChannel = null;
+let remoteRetry = null;
+
+// Apply a remote team update pushed via realtime. Skips while the user is busy
+// (typing, a menu/modal open) so it never clobbers an in-progress edit.
+function applyRemoteState(data) {
+  if (!data || !Array.isArray(data.boards)) return;
+  const ae = document.activeElement;
+  const typing = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable);
+  const busy = typing || openDd || q("#modal-root").firstChild;
+  if (busy) { clearTimeout(remoteRetry); remoteRetry = setTimeout(() => applyRemoteState(data), 1500); return; }
+  state = data; migrate();
+  if (!reconcileIdentity()) { ui.noAccess = true; render(); return; }
+  migrateCovers(); saveLocal();
+  if (ui.panel && !locateTask(ui.panel)) ui.panel = null;
+  render();
+}
+
+function ensureTeamSubscription() {
+  if (teamChannel || !cloudOn() || !window.CLOUD.user()) return;
+  const ch = window.CLOUD.subscribeTeam((data) => {
+    if (!data || data._writer === CLIENT_ID) return;   // ignore our own echo
+    applyRemoteState(data);
+  });
+  teamChannel = ch;
 }
 
 function cloudOn() { return typeof window !== "undefined" && window.CLOUD && window.CLOUD.available(); }
@@ -271,6 +302,8 @@ function initCloud() {
     cloudUserId = u ? u.id : null;
     if (sameUser) return;
     ui.noAccess = false;
+    // user changed — drop any old realtime channel
+    if (teamChannel) { window.CLOUD.unsubscribe(teamChannel); teamChannel = null; }
     loadPrefs();   // prefs key depends on the signed-in email — reload on user change
     if (u) {
       const team = await window.CLOUD.loadTeam();
@@ -281,6 +314,7 @@ function initCloud() {
         migrateCovers(); saveLocal();
         ui.home = true;   // land on Workspace home on first sign-in
         render();
+        ensureTeamSubscription();   // live updates from other members
         toast("☁ Team workspace loaded");
         return;
       }
@@ -288,6 +322,7 @@ function initCloud() {
       if ((window.CLOUD.email() || "").toLowerCase() === ADMIN_EMAIL) {
         reconcileIdentity();
         await window.CLOUD.saveTeam(state);   // admin seeds the team baseline from local
+        ensureTeamSubscription();             // live updates from other members
         toast("☁ Team workspace created");
       } else {
         // signed in but not invited (RLS blocks read) — keep them out
