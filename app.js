@@ -4334,7 +4334,9 @@ function attachRowDropZone(row, group, idxFn) {
 /* ---------------- Render: kanban view ---------------- */
 
 function kanbanViewEl(board) {
-  const kb = h("div", { class: "view-root kanban" });
+  const kb = h("div", { class: "view-root kanban-view" });
+  kb.append(kanbanStatusBar(board));
+  const lanes = h("div", { class: "kanban" });
   for (const s of STATUSES) {
     const tasks = [];
     for (const g of board.groups) {
@@ -4384,9 +4386,24 @@ function kanbanViewEl(board) {
       runWorkflows({ type: "status", task: t });
       render();
     });
-    kb.append(col);
+    lanes.append(col);
   }
+  kb.append(lanes);
   return kb;
+}
+
+// horizontal progress bar summarising task counts per status (monday-style)
+function kanbanStatusBar(board) {
+  const counts = {}; let total = 0;
+  for (const g of board.groups) for (const t of visibleTasks(g)) { counts[t.status] = (counts[t.status] || 0) + 1; total++; }
+  const wrap = h("div", { class: "kb-statusbar" });
+  if (!total) return wrap;
+  for (const s of STATUSES) {
+    const n = counts[s.id] || 0; if (!n) continue;
+    const pct = Math.round(n / total * 100);
+    wrap.append(h("span", { class: "kb-statusseg", style: `flex:${n};background:${s.color}`, title: `${s.label} · ${n}/${total} (${pct}%)` }));
+  }
+  return wrap;
 }
 
 function kanbanCardEl(task, group) {
