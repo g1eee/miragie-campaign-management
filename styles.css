@@ -1116,6 +1116,27 @@ input, textarea, select {
 .kb-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .kb-prio { color: #fff; border-radius: 4px; font-size: 11px; padding: 1px 8px; }
 
+/* kanban: add item input */
+.kb-add { padding: 6px 10px 10px; }
+.kb-add-input { width: 100%; height: 32px; border: 1px dashed var(--border-2); border-radius: 8px; background: transparent; padding: 0 10px; font-size: 13px; color: var(--text); outline: none; }
+.kb-add-input:focus { border-style: solid; border-color: var(--primary); background: var(--bg); }
+
+/* kanban: sub-items (status / person / date) */
+.kb-subs { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.kb-sub { border: 1px solid var(--border); border-radius: 9px; padding: 7px 9px; background: var(--surface); cursor: default; }
+.kb-sub-name { font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-sub-chips { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.kb-sub-pill { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px; border-radius: 6px; font-size: 11px; font-weight: 600; color: var(--text-2); background: var(--surface-2); }
+.kb-sub-pill:hover { filter: brightness(.96); }
+.kb-sub-date { color: var(--text-2); }
+.kb-sub-owner { width: 26px; min-width: 26px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; color: var(--text-2); background: var(--surface-2); }
+.kb-sub-del { margin-left: auto; color: var(--text-2); opacity: 0; transition: opacity .12s; }
+.kb-sub:hover .kb-sub-del { opacity: 1; }
+.kb-sub-del:hover { color: var(--danger); }
+.kb-sub-add { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); padding: 4px 2px; cursor: pointer; border-radius: 6px; }
+.kb-sub-add:hover { color: var(--primary); }
+.kb-sub-input { width: 100%; height: 28px; border: 1px solid var(--primary); border-radius: 7px; padding: 0 8px; font-size: 12.5px; outline: none; background: var(--bg); color: var(--text); }
+
 /* ============ Calendar ============ */
 
 .calendar { padding: 4px 32px 60px; flex: 1; display: flex; flex-direction: column; }

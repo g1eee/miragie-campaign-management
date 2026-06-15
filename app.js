@@ -4346,6 +4346,16 @@ function kanbanViewEl(board) {
     for (const { t, g } of tasks) cards.append(kanbanCardEl(t, g));
     col.append(cards);
 
+    // add a card straight into this status column
+    if (canEditBoard(board) && board.groups.length) {
+      const ai = h("input", { class: "kb-add-input", placeholder: "+ Add item" });
+      ai.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") { const v = ai.value.trim(); if (v) { addCardWithStatus(board.groups[0], v, s.id); } }
+      });
+      col.append(h("div", { class: "kb-add" }, ai));
+    }
+
     col.addEventListener("dragover", (e) => {
       if (!ui.drag) return;
       e.preventDefault();
@@ -4407,8 +4417,97 @@ function kanbanCardEl(task, group) {
     card.classList.remove("dragging");
     document.querySelectorAll(".drop-target").forEach(x => x.classList.remove("drop-target"));
   });
+  // ---- sub-items (kanban only): each shows status / person / date
+  const editable = canEditBoard(getBoard());
+  const subs = Array.isArray(task.subitems) ? task.subitems : [];
+  if (subs.length || editable) {
+    const sec = h("div", { class: "kb-subs" });
+    for (const si of subs) sec.append(kanbanSubitemEl(task, si, editable));
+    if (editable) {
+      const add = h("div", { class: "kb-sub-add" }, ico("plus", 12), h("span", {}, "Add sub-item"));
+      add.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const inp = h("input", { class: "kb-sub-input", placeholder: "Sub-item name" });
+        const commit = () => { const v = inp.value.trim(); if (v) { if (!Array.isArray(task.subitems)) task.subitems = []; task.subitems.push({ id: uid(), name: v, status: null, owners: [], due: null }); touch(task); save(); } render(); };
+        inp.addEventListener("keydown", (ev) => { ev.stopPropagation(); if (ev.key === "Enter") commit(); else if (ev.key === "Escape") render(); });
+        inp.addEventListener("blur", commit);
+        add.replaceChildren(inp); inp.focus();
+      });
+      sec.append(add);
+    }
+    card.append(sec);
+  }
   card.addEventListener("click", () => { ui.panel = task.id; renderPanel(); });
   return card;
+}
+
+function kanbanSubitemEl(task, si, editable) {
+  const row = h("div", { class: "kb-sub" });
+  const name = h("div", { class: "kb-sub-name", title: si.name }, si.name);
+  if (editable) name.addEventListener("click", (e) => { e.stopPropagation(); inlineEdit(name, si.name, (v) => { si.name = v; touch(task); save(); render(); }); });
+  const chips = h("div", { class: "kb-sub-chips" });
+
+  // status
+  const st = STATUSES.find(s => s.id === si.status);
+  const stPill = h("button", { class: "kb-sub-pill", style: st ? `background:${st.color};color:#fff` : "" }, st ? st.label : "Status");
+  stPill.addEventListener("click", (e) => { e.stopPropagation(); subStatusPicker(stPill, task, si); });
+
+  // date
+  const dateBtn = h("button", { class: "kb-sub-pill kb-sub-date" }, ico("calendar", 12), h("span", {}, si.due ? fmtDate(si.due) : "Date"));
+  dateBtn.addEventListener("click", (e) => { e.stopPropagation(); subDatePicker(dateBtn, task, si); });
+
+  // person
+  const ownerBtn = h("button", { class: "kb-sub-owner" });
+  const owners = (si.owners || []).map(personById).filter(Boolean);
+  if (owners.length) owners.slice(0, 2).forEach(p => ownerBtn.append(avatarEl(p, 18)));
+  else ownerBtn.append(ico("person", 13));
+  ownerBtn.addEventListener("click", (e) => { e.stopPropagation(); subOwnerPicker(ownerBtn, task, si); });
+
+  chips.append(stPill, dateBtn, ownerBtn);
+  row.append(name, chips);
+  if (editable) {
+    const del = h("button", { class: "kb-sub-del", title: "Delete sub-item", onclick: (e) => { e.stopPropagation(); task.subitems = task.subitems.filter(x => x !== si); touch(task); save(); render(); } });
+    del.append(ico("x", 12));
+    row.append(del);
+  }
+  return row;
+}
+
+function subStatusPicker(anchor, task, si) {
+  if (!canEditBoard(getBoard())) { toast("View only"); return; }
+  openDropdown(anchor, (el, close) => {
+    for (const s of STATUSES) el.append(h("div", { class: "dd-color", style: `background:${s.color}`, onclick: () => { si.status = s.id; touch(task); save(); close(); render(); } }, s.label));
+    el.append(h("hr", { class: "dd-sep" }), h("div", { class: "dd-item", onclick: () => { si.status = null; touch(task); save(); close(); render(); } }, ico("x", 13), h("span", {}, "Clear")));
+  }, { minWidth: 160 });
+}
+function subDatePicker(anchor, task, si) {
+  if (!canEditBoard(getBoard())) { toast("View only"); return; }
+  openDropdown(anchor, (el, close) => {
+    const inp = h("input", { type: "date", class: "cvr-sel", style: "width:100%", value: si.due || "" });
+    inp.addEventListener("change", () => { si.due = inp.value || null; touch(task); save(); close(); render(); });
+    inp.addEventListener("keydown", (e) => e.stopPropagation());
+    el.append(inp);
+    if (si.due) el.append(h("div", { class: "dd-item", onclick: () => { si.due = null; touch(task); save(); close(); render(); } }, ico("x", 13), h("span", {}, "Clear date")));
+    setTimeout(() => inp.focus(), 0);
+  }, { minWidth: 190 });
+}
+function subOwnerPicker(anchor, task, si) {
+  if (!canEditBoard(getBoard())) { toast("View only"); return; }
+  if (!Array.isArray(si.owners)) si.owners = [];
+  openDropdown(anchor, (el) => {
+    for (const p of state.people) {
+      const has = si.owners.includes(p.id);
+      el.append(h("div", { class: "dd-item", onclick: () => { si.owners = has ? si.owners.filter(x => x !== p.id) : [...si.owners, p.id]; touch(task); save(); refreshDd(); softRender(); } },
+        avatarEl(p, 22), h("span", { style: "flex:1" }, p.name), has ? ico("check", 14) : null));
+    }
+  }, { minWidth: 210 });
+}
+
+function addCardWithStatus(group, name, status) {
+  if (!canEditBoard(getBoard())) { toast("View only — ask an SPV for edit access"); return; }
+  const t = mkTask(name, { by: state.user, status });
+  group.tasks.push(t);
+  touch(t); save(); render();
 }
 
 /* ---------------- Render: calendar view ---------------- */
