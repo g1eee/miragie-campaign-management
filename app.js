@@ -1633,10 +1633,54 @@ function renderBoardList(list) {
     const item = h("div", {
       class: "side-item" + (!ui.home && b.id === state.activeBoard ? " active" : ""),
       title: b.name,
+      draggable: "true",
       onclick: () => { if (ui.home || b.id !== state.activeBoard) switchBoard(b.id); },
     }, ico(b.icon || "table", 15), h("span", { class: "side-label" }, b.name), menuBtn);
+    attachBoardDnd(item, b);
     list.append(item);
   }
+}
+
+// drag-to-reorder boards in the sidebar (Workspace home stays put — it's separate)
+function attachBoardDnd(item, b) {
+  item.addEventListener("dragstart", (e) => {
+    ui.drag = { type: "board", id: b.id };
+    e.dataTransfer.effectAllowed = "move";
+    item.classList.add("side-dragging");
+  });
+  item.addEventListener("dragend", () => {
+    ui.drag = null;
+    document.querySelectorAll(".side-dragging,.side-drop-above,.side-drop-below")
+      .forEach(x => x.classList.remove("side-dragging", "side-drop-above", "side-drop-below"));
+  });
+  item.addEventListener("dragover", (e) => {
+    if (!ui.drag || ui.drag.type !== "board" || ui.drag.id === b.id) return;
+    e.preventDefault();
+    const r = item.getBoundingClientRect();
+    const above = (e.clientY - r.top) < r.height / 2;
+    item.classList.toggle("side-drop-above", above);
+    item.classList.toggle("side-drop-below", !above);
+  });
+  item.addEventListener("dragleave", () => item.classList.remove("side-drop-above", "side-drop-below"));
+  item.addEventListener("drop", (e) => {
+    if (!ui.drag || ui.drag.type !== "board" || ui.drag.id === b.id) return;
+    e.preventDefault();
+    const above = item.classList.contains("side-drop-above");
+    item.classList.remove("side-drop-above", "side-drop-below");
+    reorderBoard(ui.drag.id, b.id, above);
+  });
+}
+
+function reorderBoard(dragId, targetId, before) {
+  const boards = state.boards;
+  const di = boards.findIndex(x => x.id === dragId);
+  if (di < 0) return;
+  const [moved] = boards.splice(di, 1);
+  const ti = boards.findIndex(x => x.id === targetId);
+  if (ti < 0) boards.push(moved);
+  else boards.splice(before ? ti : ti + 1, 0, moved);
+  save();
+  renderSidebar();
 }
 
 /* ---------------- Add-new menu (sidebar +) ---------------- */

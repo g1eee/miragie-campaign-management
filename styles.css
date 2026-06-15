@@ -268,6 +268,16 @@ input, textarea, select {
 .side-item .item-menu { visibility: hidden; border-radius: 4px; padding: 2px; color: var(--text-2); }
 .side-item:hover .item-menu { visibility: visible; }
 .side-item .item-menu:hover { background: var(--border); color: var(--text); }
+/* drag-to-reorder boards */
+.side-item[draggable="true"] { cursor: grab; }
+.side-item.side-dragging { opacity: .45; }
+.side-item.side-drop-above::before,
+.side-item.side-drop-below::after {
+  content: ""; position: absolute; left: 6px; right: 6px; height: 2px;
+  background: var(--primary); border-radius: 2px; z-index: 2;
+}
+.side-item.side-drop-above::before { top: 0; }
+.side-item.side-drop-below::after { bottom: 0; }
 
 /* ============ Main / Board header ============ */
 
