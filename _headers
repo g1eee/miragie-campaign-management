@@ -1,0 +1,14 @@
+# Cloudflare Pages / Workers static-assets headers.
+# HTML must never be cached long, so new ?v= asset refs are picked up immediately.
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+
+# Hashed/versioned assets can cache hard (they change via ?v=).
+/app.js
+  Cache-Control: public, max-age=86400
+/styles.css
+  Cache-Control: public, max-age=86400
+/assets/*
+  Cache-Control: public, max-age=604800

@@ -1,0 +1,9 @@
+{
+  // Static-only Worker: serves the files in this repo as assets.
+  // Connected to GitHub → every push to main auto-deploys.
+  "name": "miragie-campaign-management",
+  "compatibility_date": "2024-11-01",
+  "assets": {
+    "directory": "."
+  }
+}
