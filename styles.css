@@ -2643,3 +2643,62 @@ input, textarea, select { border-radius: 10px; }
 
 /* workspace-home banner: soft pastel wash */
 .wh-banner { background: linear-gradient(120deg, #e7ecfb, #efe9fb 60%, #fbeaf4); }
+
+/* ============================================================
+   Micro-interactions: light, additive, no JS
+   ============================================================ */
+
+/* Buttons: springy press feedback */
+.btn-primary, .btn-invite, .tb-btn, .icon-btn, .avatar-btn,
+.img-tool, .row-act, .cal-iconbtn, .cal-nav, .qf-clear {
+  transition: transform .12s cubic-bezier(.34, 1.56, .64, 1),
+              background .15s, color .15s, box-shadow .15s, filter .15s;
+}
+.btn-primary:active, .btn-invite:active, .tb-btn:active,
+.icon-btn:active, .avatar-btn:active, .img-tool:active {
+  transform: scale(.94);
+}
+.btn-primary:hover { box-shadow: 0 4px 12px rgba(0, 115, 234, .28); }
+.icon-btn:hover, .avatar-btn:hover { transform: translateY(-1px); }
+.row-act:hover { transform: scale(1.12); }
+.cal-iconbtn:active, .cal-nav:active { transform: scale(.88); }
+
+/* Cell pills: lift on hover, press on click */
+.cell-fill { transition: filter .15s, transform .1s, box-shadow .15s; }
+.cell-fill:hover { box-shadow: inset 0 0 0 99px rgba(255, 255, 255, .08); }
+.cell-fill:active { transform: scale(.97); }
+
+/* Checkbox: pop when toggled */
+.cell input[type="checkbox"] { transition: transform .12s cubic-bezier(.34, 1.6, .64, 1); }
+.cell input[type="checkbox"]:active { transform: scale(1.25); }
+.cell input[type="checkbox"]:checked { animation: cb-pop .22s cubic-bezier(.34, 1.6, .64, 1); }
+@keyframes cb-pop { 0% { transform: scale(.6); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
+
+/* Color swatches: grow on hover */
+.swatch { transition: transform .12s cubic-bezier(.34, 1.56, .64, 1), border-color .12s; }
+.swatch:hover { transform: scale(1.15); }
+.swatch:active { transform: scale(.95); }
+
+/* Sidebar items: slide-in nudge */
+.side-item { transition: background .15s, color .15s, transform .12s, padding-left .12s; }
+.side-item:hover { transform: translateX(2px); }
+
+/* Count badge: pop in */
+.count-badge, .tb-btn .count-badge { animation: badge-pop .25s cubic-bezier(.34, 1.6, .64, 1); }
+@keyframes badge-pop { 0% { transform: scale(0); } 70% { transform: scale(1.2); } 100% { transform: scale(1); } }
+
+/* Collab/chart cards: gentle lift */
+.wh-collab-card { transition: border-color .12s, box-shadow .15s, transform .15s; }
+.wh-collab-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+
+/* Respect reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+  .btn-primary:active, .icon-btn:hover, .row-act:hover, .cell-fill:active,
+  .cell input[type="checkbox"]:active, .swatch:hover, .side-item:hover,
+  .wh-collab-card:hover { transform: none !important; }
+}
