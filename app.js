@@ -561,6 +561,7 @@ function migrate() {
   if (!Array.isArray(state.feedback)) state.feedback = [];
   if (!Array.isArray(state.invites)) state.invites = [];
   if (!Array.isArray(state.statuses) || !state.statuses.length) state.statuses = JSON.parse(JSON.stringify(DEFAULT_STATUSES));
+  { const n = state.statuses.find(s => s.id === "none"); if (n && (!n.label || n.label === "—")) n.label = "Not Started"; }
   if (!Array.isArray(state.priorities) || !state.priorities.length) state.priorities = JSON.parse(JSON.stringify(DEFAULT_PRIORITIES));
   STATUSES = state.statuses;
   PRIORITIES = state.priorities;
@@ -4252,7 +4253,7 @@ function ownerPicker(anchor, taskId) {
 function statusCellEl(task) {
   const s = statusOf(task);
   const cell = h("div", { class: "cell", style: "padding:0 8px" });
-  const fill = h("div", { class: "cell-fill", style: `background:${s.color}`, title: s.label }, s.id === "none" ? "" : s.label);
+  const fill = h("div", { class: "cell-fill", style: `background:${s.color}`, title: s.label }, s.label || "Not Started");
   fill.addEventListener("click", () => statusPicker(fill, task.id));
   cell.append(fill);
   return cell;
@@ -4866,10 +4867,8 @@ function calendarViewEl(board) {
   const present = new Set();
   for (const arr of byDate.values()) for (const t of arr) present.add(t.status);
   const legend = h("div", { class: "cal-legend" });
-  if (present.has("none") || [...present].some(s => !STATUSES.find(x => x.id === s)))
-    legend.append(h("span", { class: "cal-leg" }, h("span", { class: "cal-dot", style: "background:#c4c4c4" }), h("span", {}, "Empty")));
   for (const s of STATUSES) if (present.has(s.id))
-    legend.append(h("span", { class: "cal-leg" }, h("span", { class: "cal-dot", style: `background:${s.color}` }), h("span", {}, s.label)));
+    legend.append(h("span", { class: "cal-leg" }, h("span", { class: "cal-dot", style: `background:${s.color}` }), h("span", {}, s.label || "Not Started")));
   if (legend.children.length) cal.append(legend);
   return cal;
 }
