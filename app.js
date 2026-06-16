@@ -4007,10 +4007,6 @@ function taskRowEl(board, group, task, tpl, cols) {
     startNameEdit(nameSpan, task);
   });
 
-  const openBtn = h("button", { class: "row-act", title: "Open task" });
-  openBtn.append(ico("open", 14));
-  openBtn.addEventListener("click", (e) => { e.stopPropagation(); ui.panel = task.id; renderPanel(); });
-
   const rowMenuBtn = h("button", { class: "row-act", title: "Task menu" });
   rowMenuBtn.append(ico("dots", 14));
   rowMenuBtn.addEventListener("click", (e) => { e.stopPropagation(); taskMenu(rowMenuBtn, board, group, task); });
@@ -4039,7 +4035,7 @@ function taskRowEl(board, group, task, tpl, cols) {
     fchip.addEventListener("click", (e) => { e.stopPropagation(); ui.panel = task.id; renderPanel(); });
     nameCell.append(fchip);
   }
-  nameCell.append(h("span", { class: "row-actions" }, openBtn, rowMenuBtn));
+  nameCell.append(h("span", { class: "row-actions" }, rowMenuBtn));
   row.append(nameCell);
 
   // dynamic cells (unified order). On a multi-level parent WITH sub-items, the
@@ -4096,19 +4092,26 @@ function subLabelBar(subs, colorOf, labelOf) {
   for (const g of groups) { const pct = Math.round(g.n / total * 100); bar.append(h("span", { class: "mirror-seg", style: `flex:${g.n};background:${g.color}`, title: `${g.label} · ${g.n}/${total} (${pct}%)` })); }
   return bar;
 }
-function subDateRange(subs, getD) {
+function subDateMin(subs, getD) {
   const ds = subs.map(getD).filter(Boolean).sort();
-  if (!ds.length) return null;
-  const a = ds[0], b = ds[ds.length - 1];
+  return ds[0] || null;   // earliest date among sub-items
+}
+function subTimelineRange(subs, colId) {
+  const all = [];
+  for (const s of subs) { const v = s.cells && s.cells[colId]; if (v) { if (v.start) all.push(v.start); if (v.end) all.push(v.end); } }
+  if (!all.length) return null;
+  all.sort();
+  const a = all[0], b = all[all.length - 1];
   return a === b ? fmtDate(a) : fmtDate(a) + " - " + fmtDate(b);
 }
 function subSummaryCell(board, task, oc) {
   const subs = task.subitems || [];
   const wrap = (kid) => h("div", { class: "cell sub-sum" }, kid);
+  const datePill = (txt) => txt ? h("span", { class: "sub-sum-date" }, txt) : h("span", { class: "muted" }, "—");
   if (oc.kind === "sys") {
     if (oc.id === "status") return wrap(subLabelBar(subs, s => statusOf(s).color, s => statusOf(s).label || "Blank"));
     if (oc.id === "priority") return wrap(subLabelBar(subs, s => prioOf(s).color, s => prioOf(s).label || "Blank"));
-    if (oc.id === "date") { const r = subDateRange(subs, s => s.due); return wrap(r ? h("span", { class: "sub-sum-date" }, r) : h("span", { class: "muted" }, "—")); }
+    if (oc.id === "date") { const d = subDateMin(subs, s => s.due); return wrap(datePill(d ? fmtDate(d) : null)); }   // earliest sub-item date
     if (oc.id === "owner") {
       const ids = [...new Set(subs.flatMap(s => s.owners || []))].map(personById).filter(Boolean);
       if (!ids.length) return wrap(h("span", { class: "muted" }, "—"));
@@ -4120,7 +4123,8 @@ function subSummaryCell(board, task, oc) {
   if (LABEL_TYPES.includes(col.type)) return wrap(subLabelBar(subs,
     s => { const lab = (col.labels || []).find(l => l.id === (s.cells ? s.cells[col.id] : undefined)); return lab ? lab.color : "#c4c4c4"; },
     s => { const lab = (col.labels || []).find(l => l.id === (s.cells ? s.cells[col.id] : undefined)); return lab ? (lab.label || "Blank") : "Blank"; }));
-  if (col.type === "date") { const r = subDateRange(subs, s => s.cells && s.cells[col.id]); return wrap(r ? h("span", { class: "sub-sum-date" }, r) : h("span", { class: "muted" }, "—")); }
+  if (col.type === "date") return wrap(datePill((() => { const d = subDateMin(subs, s => s.cells && s.cells[col.id]); return d ? fmtDate(d) : null; })()));
+  if (col.type === "timeline") return wrap(datePill(subTimelineRange(subs, col.id)));   // earliest → latest
   return null;   // text / number / connect / mirror / files → keep parent value
 }
 
