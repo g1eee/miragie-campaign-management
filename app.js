@@ -3948,7 +3948,7 @@ function colStatusCellEl(board, task, col) {
   const v = task.cells[col.id];
   const lb = (col.labels || []).find(l => l.id === v);
   const cell = h("div", { class: "cell", style: "padding:0 8px" });
-  const fill = h("div", { class: "cell-fill", style: `background:${lb ? lb.color : "#c4c4c4"}`, title: lb ? lb.label : "" }, lb ? lb.label : "");
+  const fillBg = lb ? lb.color : "#c4c4c4"; const fill = h("div", { class: "cell-fill", style: `background:${fillBg};color:${textColorOn(fillBg)}`, title: lb ? lb.label : "" }, lb ? lb.label : "");
   fill.addEventListener("click", () => labelPicker(fill, board, task, col, false));
   cell.append(fill);
   return cell;
@@ -4162,7 +4162,7 @@ function subSummaryCell(board, task, oc) {
   const wrap = (kid) => { const c = h("div", { class: "cell sub-sum", title: "Click to update sub-items" }, kid); c.addEventListener("click", () => subMultiEditor(c, task, oc)); return c; };
   const datePill = (txt) => txt ? h("span", { class: "sub-sum-date" }, txt) : h("span", { class: "muted" }, "—");
   if (oc.kind === "sys") {
-    if (oc.id === "status") return wrap(subLabelBar(subs, s => statusOf(s).color, s => statusOf(s).label || "Blank"));
+    if (oc.id === "status") return wrap(subLabelBar(subs, s => statusOf(s).color, s => statusOf(s).label || "Not Started"));
     if (oc.id === "priority") return wrap(subLabelBar(subs, s => prioOf(s).color, s => prioOf(s).label || "Blank"));
     if (oc.id === "date") { const d = subDateMin(subs, s => s.due); return wrap(datePill(d ? fmtDate(d) : null)); }   // earliest sub-item date
     return null;   // owner / updated → keep the parent's own (editable) value, no roll-up
@@ -4253,7 +4253,7 @@ function ownerPicker(anchor, taskId) {
 function statusCellEl(task) {
   const s = statusOf(task);
   const cell = h("div", { class: "cell", style: "padding:0 8px" });
-  const fill = h("div", { class: "cell-fill", style: `background:${s.color}`, title: s.label }, s.label || "Not Started");
+  const fill = h("div", { class: "cell-fill", style: `background:${s.color};color:${textColorOn(s.color)}`, title: s.label || "Not Started" }, s.label || "Not Started");
   fill.addEventListener("click", () => statusPicker(fill, task.id));
   cell.append(fill);
   return cell;
@@ -4423,7 +4423,7 @@ function datePicker(anchor, taskId) {
 function priorityCellEl(task) {
   const p = prioOf(task);
   const cell = h("div", { class: "cell", style: "padding:0 8px" });
-  const fill = h("div", { class: "cell-fill", style: `background:${p.color}`, title: p.label || "No priority" }, p.label);
+  const fill = h("div", { class: "cell-fill", style: `background:${p.color};color:${textColorOn(p.color)}`, title: p.label || "No priority" }, p.label);
   fill.addEventListener("click", () => priorityPicker(fill, task.id));
   cell.append(fill);
   return cell;
