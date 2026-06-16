@@ -1869,10 +1869,19 @@ function renderMain() {
   const main = q("#main");
   // keep scroll position when re-rendering the SAME board+view (actions shouldn't
   // jump back to the top); reset to top when switching board/view/home.
+  // The scroller is #main OR the inner .board-canvas (when columns overflow), so
+  // capture/restore both.
   const _key = ui.home ? "home" : (() => { const b = getBoard(); return b ? b.id + ":" + b.view : "none"; })();
-  const sc = (renderMain._key === _key) ? main.scrollTop : 0;
+  const same = renderMain._key === _key;
   renderMain._key = _key;
-  requestAnimationFrame(() => { main.scrollTop = sc; });
+  const oldBc = main.querySelector(".board-canvas");
+  const scMain = main.scrollTop, scBcTop = oldBc ? oldBc.scrollTop : 0, scBcLeft = oldBc ? oldBc.scrollLeft : 0;
+  requestAnimationFrame(() => {
+    if (!same) { main.scrollTop = 0; return; }
+    main.scrollTop = scMain;
+    const bc = main.querySelector(".board-canvas");
+    if (bc) { bc.scrollTop = scBcTop; bc.scrollLeft = scBcLeft; }
+  });
   main.replaceChildren();
   main.classList.remove("board-ro");
 
