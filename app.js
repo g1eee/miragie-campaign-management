@@ -4827,13 +4827,13 @@ function calendarViewEl(board) {
       more.addEventListener("click", (e) => {
         e.stopPropagation();
         openDropdown(more, (dd, close) => {
-          dd.append(h("div", { class: "dd-title" }, fmtDate(iso) + " · " + tasks.length + " items"));
+          dd.classList.add("cal-pop-day");
+          dd.append(h("div", { class: "cal-pop-title" }, fmtDate(iso)));
           for (const t of tasks) {
             const s = statusOf(t);
-            dd.append(h("div", { class: "dd-item", onclick: () => { close(); ui.panel = t.id; renderPanel(); } },
-              h("span", { class: "cal-dot", style: `background:${s.color}` }), h("span", { style: "flex:1" }, t.name)));
+            dd.append(h("button", { class: "cal-pop-bar", style: `background:${s.color};color:${textColorOn(s.color)}`, title: `${t.name} — ${s.label}`, onclick: () => { close(); ui.panel = t.id; renderPanel(); } }, t.name));
           }
-        }, { minWidth: 240 });
+        }, { minWidth: 260 });
       });
       cell.append(more);
     }

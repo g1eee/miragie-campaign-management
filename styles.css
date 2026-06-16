@@ -1083,6 +1083,10 @@ input, textarea, select {
 .update-head .row-act { margin-left: auto; }
 .update-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
 .cal-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.cal-pop-day { padding: 10px; }
+.cal-pop-title { font-weight: 700; font-size: 14px; margin: 2px 2px 8px; }
+.cal-pop-bar { display: block; width: 100%; text-align: left; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: filter .12s; }
+.cal-pop-bar:hover { filter: brightness(.94); }
 .cal-legend { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 18px; padding: 12px 16px; background: var(--bg); border-top: 1px solid var(--border); box-shadow: 0 -4px 12px -8px rgba(0, 0, 0, .25); }
 .cal-leg { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-2); }
 .mention { color: var(--primary); font-weight: 600; border-radius: 4px; padding: 0 2px; }
