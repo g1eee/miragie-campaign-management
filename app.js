@@ -85,6 +85,8 @@ const PATHS = {
   bell: '<path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2 2 0 0 0 4 0"/>',
   megaphone: '<path d="M3 11v2a1 1 0 0 0 1 1h2l9 5V5l-9 5H4a1 1 0 0 0-1 1z"/><path d="M18 8a4 4 0 0 1 0 8"/>',
   subitems: '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M8 13h11M8 18h11"/><path d="M5 12v7"/>',
+  thumb: '<path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3zM7 11l4-7a2 2 0 0 1 2 2v3h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7"/>',
+  reply: '<path d="M9 14l-5-5 5-5"/><path d="M4 9h9a7 7 0 0 1 7 7v3"/>',
   grip: '<circle cx="9" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.4" fill="currentColor" stroke="none"/>',
   chat: '<path d="M12 3a9 9 0 0 0-7.5 14L3 21l4.2-1.4A9 9 0 1 0 12 3z"/>',
   download: '<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>',
@@ -6761,6 +6763,54 @@ function scaleImageWide(file, maxW, cb) {
   reader.readAsDataURL(file);
 }
 
+// set comment HTML and wire @mention tokens: blue, hover/click → profile card
+function renderMentions(el, html) {
+  el.innerHTML = html || "";
+  el.querySelectorAll(".mention[data-uid]").forEach(m => {
+    const p = personById(m.dataset.uid); if (!p) return;
+    m.style.cursor = "pointer"; m.title = p.name;
+    let hov;
+    m.addEventListener("mouseenter", () => { hov = setTimeout(() => memberProfilePopover(m, p), 320); });
+    m.addEventListener("mouseleave", () => clearTimeout(hov));
+    m.addEventListener("click", (e) => { e.stopPropagation(); clearTimeout(hov); memberProfilePopover(m, p); });
+  });
+}
+
+// one update card: text + mentions + Like + Reply + replies. Commenting/liking is
+// open to every member, even on boards they can't edit.
+function updateCardEl(task, u) {
+  if (!Array.isArray(u.likes)) u.likes = [];
+  if (!Array.isArray(u.replies)) u.replies = [];
+  const author = personById(u.by);
+  const canDel = u.by === state.user || isAdmin();
+  const del = canDel ? h("button", { class: "row-act", title: "Delete", onclick: () => { task.updates = task.updates.filter(x => x.id !== u.id); save(); render(); } }, ico("trash", 13)) : null;
+  const txt = h("div", { class: "update-text" });
+  if (u.html) renderMentions(txt, u.html); else txt.append(u.text || "");
+
+  const liked = u.likes.includes(state.user);
+  const likeBtn = h("button", { class: "upd-act" + (liked ? " on" : ""), onclick: () => { liked ? u.likes = u.likes.filter(x => x !== state.user) : u.likes.push(state.user); save(); render(); } },
+    ico("thumb", 14), h("span", {}, u.likes.length ? "Like · " + u.likes.length : "Like"));
+  const replyBtn = h("button", { class: "upd-act", onclick: () => { ui.replyTo = ui.replyTo === u.id ? null : u.id; renderPanel(); } }, ico("reply", 14), h("span", {}, "Reply"));
+
+  const card = h("div", { class: "update-card" },
+    h("div", { class: "update-head" }, avatarEl(author, 24), h("b", {}, author ? author.name : "Unknown"), h("time", {}, relTime(u.at)), del),
+    txt,
+    h("div", { class: "upd-actions" }, likeBtn, replyBtn));
+
+  for (const r of u.replies) {
+    const ra = personById(r.by);
+    const rtxt = h("div", { class: "update-text" });
+    if (r.html) renderMentions(rtxt, r.html); else rtxt.append(r.text || "");
+    card.append(h("div", { class: "update-reply" },
+      h("div", { class: "update-head" }, avatarEl(ra, 20), h("b", {}, ra ? ra.name : "Unknown"), h("time", {}, relTime(r.at))),
+      rtxt));
+  }
+  if (ui.replyTo === u.id) {
+    card.append(richEditor((html, plain) => { u.replies.push({ id: uid(), by: state.user, html, text: plain, at: Date.now() }); ui.replyTo = null; touch(task); save(); render(); }));
+  }
+  return card;
+}
+
 function richEditor(onPost) {
   const wrap = h("div", { class: "ip-composer" });
   const card = h("div", { class: "rich-card collapsed" });
@@ -6834,19 +6884,25 @@ function richEditor(onPost) {
   area.addEventListener("focus", () => card.classList.add("active"));
   area.addEventListener("blur", () => { if (!(area.textContent || "").trim() && !/<img/i.test(area.innerHTML)) { card.classList.remove("active"); toolbar.classList.add("hidden"); fmtBtn.classList.remove("on"); } });
 
-  // @ mention — list workspace members; pick inserts "@Name"
-  const insertMention = (p, stripAt) => {
+  // @ mention — people + group ("Everyone on …") options; inserts a styled token
+  const insertMention = (label, uid, stripAt) => {
     area.focus();
     if (stripAt) { try { document.execCommand("delete", false); } catch (e) {} }
-    cmd("insertText", "@" + p.name + " ");
+    const span = uid
+      ? `<span class="mention" data-uid="${uid}">@${label}</span>`
+      : `<span class="mention mention-all">@${label}</span>`;
+    cmd("insertHTML", span + "&nbsp;");
   };
   const mentionPicker = (stripAt) => {
-    if (!state.people.length) return;
     openDropdown(area, (el, close) => {
-      el.append(h("div", { class: "dd-title" }, "Mention someone"));
-      for (const p of state.people) el.append(h("div", { class: "dd-item", onclick: () => { insertMention(p, stripAt); close(); } },
+      el.append(h("div", { class: "dd-title" }, "People"));
+      for (const p of state.people) el.append(h("div", { class: "dd-item", onclick: () => { insertMention(p.name, p.id, stripAt); close(); } },
         avatarEl(p, 22), h("span", { style: "flex:1" }, p.name)));
-    }, { minWidth: 220 });
+      el.append(h("hr", { class: "dd-sep" }), h("div", { class: "dd-title" }, "Teams"));
+      for (const label of ["Everyone on this board", "Everyone on this task", "Everyone on this workspace"])
+        el.append(h("div", { class: "dd-item", onclick: () => { insertMention(label, null, stripAt); close(); } },
+          ico("person", 16), h("span", { style: "flex:1" }, label)));
+    }, { minWidth: 250 });
   };
   area.addEventListener("input", (e) => { if (e.data === "@") mentionPicker(true); });
 
@@ -6923,16 +6979,7 @@ function renderPanel() {
     if (!task.updates.length) {
       body.append(h("div", { class: "ip-empty" }, "No updates yet. Be the first to write one."));
     }
-    for (const u of task.updates) {
-      const author = personById(u.by);
-      const del = h("button", { class: "row-act", title: "Delete update", onclick: () => { task.updates = task.updates.filter(x => x.id !== u.id); save(); render(); } });
-      del.append(ico("trash", 13));
-      const txt = h("div", { class: "update-text" });
-      if (u.html) txt.innerHTML = u.html; else txt.append(u.text || "");
-      body.append(h("div", { class: "update-card" },
-        h("div", { class: "update-head" }, avatarEl(author, 24), h("b", {}, author ? author.name : "Unknown"), h("time", {}, relTime(u.at)), del),
-        txt));
-    }
+    for (const u of task.updates) body.append(updateCardEl(task, u));
   } else if (ui.panelTab === "files") {
     const filesGrid = h("div", { class: "ip-files" });
     for (const f of task.files) {
@@ -7074,6 +7121,7 @@ function profileMenu(anchor) {
 function textMentions(text, person) {
   if (!text || !person) return false;
   const t = text.toLowerCase();
+  if (/@everyone\b/.test(t)) return true;   // group mention pings everyone with access
   const names = [person.name, (person.name || "").split(" ")[0]].filter(Boolean);
   return names.some(n => t.includes("@" + n.toLowerCase()));
 }

@@ -1082,6 +1082,15 @@ input, textarea, select {
 .update-head time { color: var(--text-2); font-size: 12px; }
 .update-head .row-act { margin-left: auto; }
 .update-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.mention { color: var(--primary); font-weight: 600; border-radius: 4px; padding: 0 2px; }
+.mention:hover { background: var(--primary-soft); }
+.mention-all { color: #a25ddc; }
+.upd-actions { display: flex; gap: 4px; margin-top: 8px; }
+.upd-act { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--text-2); padding: 4px 8px; border-radius: 7px; transition: background .12s, color .12s; }
+.upd-act:hover { background: var(--surface-2); color: var(--text); }
+.upd-act.on { color: var(--primary); }
+.update-reply { margin: 8px 0 0 14px; padding: 8px 10px; border-left: 2px solid var(--border); background: var(--surface); border-radius: 0 8px 8px 0; }
+.update-reply .update-head { margin-bottom: 4px; }
 
 /* ============ Kanban ============ */
 
