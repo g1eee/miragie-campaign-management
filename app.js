@@ -976,10 +976,10 @@ function newItemModal(board, group, prefill = {}) {
 
     // Status
     const statusBtn = h("button", { class: "mi-pill" });
-    const drawStatus = () => { const s = STATUSES.find(x => x.id === data.status) || STATUSES[STATUSES.length - 1]; statusBtn.style.background = s.color; statusBtn.style.color = textColorOn(s.color); statusBtn.textContent = stLabel(s); };
+    const drawStatus = () => { const s = STATUSES.find(x => x.id === data.status) || STATUSES[STATUSES.length - 1]; statusBtn.style.background = s.color; statusBtn.textContent = stLabel(s); };
     drawStatus();
     statusBtn.addEventListener("click", () => openDropdown(statusBtn, (dd, c) => {
-      for (const s of STATUSES) dd.append(h("div", { class: "dd-color", style: `background:${s.color};color:${textColorOn(s.color)}`, onclick: () => { data.status = s.id; drawStatus(); c(); } }, stLabel(s)));
+      for (const s of STATUSES) dd.append(h("div", { class: "dd-color", style: `background:${s.color}`, onclick: () => { data.status = s.id; drawStatus(); c(); } }, stLabel(s)));
     }, { minWidth: 170 }));
     body.append(field("kanban", "#00c875", "Status", statusBtn));
 
@@ -3953,7 +3953,7 @@ function colStatusCellEl(board, task, col) {
   const v = task.cells[col.id];
   const lb = (col.labels || []).find(l => l.id === v);
   const cell = h("div", { class: "cell", style: "padding:0 8px" });
-  const fillBg = lb ? lb.color : "#c4c4c4"; const fill = h("div", { class: "cell-fill", style: `background:${fillBg};color:${textColorOn(fillBg)}`, title: lb ? lb.label : "" }, lb ? lb.label : "");
+  const fill = h("div", { class: "cell-fill", style: `background:${lb ? lb.color : "#c4c4c4"}`, title: lb ? lb.label : "" }, lb ? lb.label : "");
   fill.addEventListener("click", () => labelPicker(fill, board, task, col, false));
   cell.append(fill);
   return cell;
@@ -4259,7 +4259,7 @@ function statusCellEl(task) {
   const s = statusOf(task);
   const cell = h("div", { class: "cell", style: "padding:0 8px" });
   const lab = stLabel(s);
-  const fill = h("div", { class: "cell-fill", style: `background:${s.color};color:${textColorOn(s.color)}`, title: lab }, lab);
+  const fill = h("div", { class: "cell-fill", style: `background:${s.color}`, title: lab }, lab);
   fill.addEventListener("click", () => statusPicker(fill, task.id));
   cell.append(fill);
   return cell;
@@ -4271,7 +4271,7 @@ function statusPicker(anchor, taskId) {
     for (const s of STATUSES) {
       el.append(h("div", {
         class: "dd-color",
-        style: `background:${s.color};color:${textColorOn(s.color)}`,
+        style: `background:${s.color}`,
         onclick: () => {
           const t = locateTask(taskId)?.task;
           if (!t) return;
@@ -4429,7 +4429,7 @@ function datePicker(anchor, taskId) {
 function priorityCellEl(task) {
   const p = prioOf(task);
   const cell = h("div", { class: "cell", style: "padding:0 8px" });
-  const fill = h("div", { class: "cell-fill", style: `background:${p.color};color:${textColorOn(p.color)}`, title: p.label || "No priority" }, p.label);
+  const fill = h("div", { class: "cell-fill", style: `background:${p.color}`, title: p.label || "No priority" }, p.label);
   fill.addEventListener("click", () => priorityPicker(fill, task.id));
   cell.append(fill);
   return cell;
@@ -4536,7 +4536,7 @@ function kanbanViewEl(board) {
       for (const t of visibleTasks(g)) if (t.status === s.id) tasks.push({ t, g });
     }
     const col = h("div", { class: "kb-col" });
-    const head = h("div", { class: "kb-head", style: `background:${s.color};color:${textColorOn(s.color)}`, draggable: canEditBoard(board) ? "true" : null, title: canEditBoard(board) ? "Drag to reorder column" : "" }, stLabel(s), h("span", {}, `${tasks.length}`));
+    const head = h("div", { class: "kb-head", style: `background:${s.color}`, draggable: canEditBoard(board) ? "true" : null, title: canEditBoard(board) ? "Drag to reorder column" : "" }, stLabel(s), h("span", {}, `${tasks.length}`));
     if (canEditBoard(board)) {
       head.addEventListener("dragstart", (e) => { ui.drag = { type: "kbcol", statusId: s.id }; e.dataTransfer.effectAllowed = "move"; col.classList.add("kb-col-dragging"); e.stopPropagation(); });
       head.addEventListener("dragend", () => { ui.drag = null; document.querySelectorAll(".kb-col-dragging,.kb-col-drop").forEach(x => x.classList.remove("kb-col-dragging", "kb-col-drop")); });
@@ -4693,7 +4693,7 @@ function kanbanSubitemEl(task, si, editable) {
 function subStatusPicker(anchor, task, si) {
   if (!canEditBoard(getBoard())) { toast("View only"); return; }
   openDropdown(anchor, (el, close) => {
-    for (const s of STATUSES) el.append(h("div", { class: "dd-color", style: `background:${s.color};color:${textColorOn(s.color)}`, onclick: () => { si.status = s.id; touch(task); save(); close(); render(); } }, stLabel(s)));
+    for (const s of STATUSES) el.append(h("div", { class: "dd-color", style: `background:${s.color}`, onclick: () => { si.status = s.id; touch(task); save(); close(); render(); } }, stLabel(s)));
     el.append(h("hr", { class: "dd-sep" }), h("div", { class: "dd-item", onclick: () => { si.status = null; touch(task); save(); close(); render(); } }, ico("x", 13), h("span", {}, "Clear")));
   }, { minWidth: 160 });
 }
