@@ -213,6 +213,9 @@ function relTime(ts) {
 
 const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map(w => w[0].toUpperCase()).join("");
 const statusOf = (t) => STATUSES.find(s => s.id === t.status) || { id: t.status, label: "", color: "#c4c4c4" };
+// display label for a status: blank or any lone dash → "Not Started" (handles legacy data)
+const isBlankLabel = (l) => !l || /^[\s—–-]*$/.test(l);
+const stLabel = (s) => (s && !isBlankLabel(s.label)) ? s.label : "Not Started";
 const prioOf = (t) => PRIORITIES.find(p => p.id === t.priority) || { id: t.priority, label: "", color: "#c4c4c4" };
 
 /* ---------------- State ---------------- */
@@ -561,7 +564,7 @@ function migrate() {
   if (!Array.isArray(state.feedback)) state.feedback = [];
   if (!Array.isArray(state.invites)) state.invites = [];
   if (!Array.isArray(state.statuses) || !state.statuses.length) state.statuses = JSON.parse(JSON.stringify(DEFAULT_STATUSES));
-  { const n = state.statuses.find(s => s.id === "none"); if (n && (!n.label || n.label === "—")) n.label = "Not Started"; }
+  { const n = state.statuses.find(s => s.id === "none"); if (n && isBlankLabel(n.label)) n.label = "Not Started"; }
   if (!Array.isArray(state.priorities) || !state.priorities.length) state.priorities = JSON.parse(JSON.stringify(DEFAULT_PRIORITIES));
   STATUSES = state.statuses;
   PRIORITIES = state.priorities;
@@ -971,10 +974,10 @@ function newItemModal(board, group, prefill = {}) {
 
     // Status
     const statusBtn = h("button", { class: "mi-pill" });
-    const drawStatus = () => { const s = STATUSES.find(x => x.id === data.status) || STATUSES[STATUSES.length - 1]; statusBtn.style.background = s.color; statusBtn.textContent = s.label; };
+    const drawStatus = () => { const s = STATUSES.find(x => x.id === data.status) || STATUSES[STATUSES.length - 1]; statusBtn.style.background = s.color; statusBtn.style.color = textColorOn(s.color); statusBtn.textContent = stLabel(s); };
     drawStatus();
     statusBtn.addEventListener("click", () => openDropdown(statusBtn, (dd, c) => {
-      for (const s of STATUSES) dd.append(h("div", { class: "dd-color", style: `background:${s.color}`, onclick: () => { data.status = s.id; drawStatus(); c(); } }, s.label));
+      for (const s of STATUSES) dd.append(h("div", { class: "dd-color", style: `background:${s.color};color:${textColorOn(s.color)}`, onclick: () => { data.status = s.id; drawStatus(); c(); } }, stLabel(s)));
     }, { minWidth: 170 }));
     body.append(field("kanban", "#00c875", "Status", statusBtn));
 
@@ -2357,7 +2360,7 @@ function filterPanel(anchor) {
     };
 
     cols.append(col("Group", board.groups.map(g => ({ id: g.id, label: g.name, color: g.color, n: g.tasks.length })), ui.fGroup));
-    cols.append(col("Status", STATUSES.map(s => ({ id: s.id, label: s.label || "Blank", color: s.color, n: all.filter(t => t.status === s.id).length })), ui.fStatus));
+    cols.append(col("Status", STATUSES.map(s => ({ id: s.id, label: stLabel(s), color: s.color, n: all.filter(t => t.status === s.id).length })), ui.fStatus));
     cols.append(col("Priority", PRIORITIES.map(p => ({ id: p.id, label: p.label || "Blank", color: p.color, n: all.filter(t => t.priority === p.id).length })), ui.fPriority));
     el.append(cols);
   }, { minWidth: 560 });
@@ -3795,7 +3798,7 @@ function isLabelMirror(connBoard, colId) {
 }
 function mirrorLabelColor(lt, colId, lb) { return mirrorLabelInfo(lt, colId, lb).color; }
 function mirrorLabelInfo(lt, colId, lb) {
-  if (colId === "status") { const s = statusOf(lt); return { label: s.label || "Blank", color: s.color }; }
+  if (colId === "status") { const s = statusOf(lt); return { label: stLabel(s), color: s.color }; }
   if (colId === "priority") { const p = prioOf(lt); return { label: p.label || "Blank", color: p.color }; }
   const cc = (lb.columns || []).find(c => c.id === colId);
   if (cc && LABEL_TYPES.includes(cc.type)) {
@@ -4162,7 +4165,7 @@ function subSummaryCell(board, task, oc) {
   const wrap = (kid) => { const c = h("div", { class: "cell sub-sum", title: "Click to update sub-items" }, kid); c.addEventListener("click", () => subMultiEditor(c, task, oc)); return c; };
   const datePill = (txt) => txt ? h("span", { class: "sub-sum-date" }, txt) : h("span", { class: "muted" }, "—");
   if (oc.kind === "sys") {
-    if (oc.id === "status") return wrap(subLabelBar(subs, s => statusOf(s).color, s => statusOf(s).label || "Not Started"));
+    if (oc.id === "status") return wrap(subLabelBar(subs, s => statusOf(s).color, s => stLabel(statusOf(s))));
     if (oc.id === "priority") return wrap(subLabelBar(subs, s => prioOf(s).color, s => prioOf(s).label || "Blank"));
     if (oc.id === "date") { const d = subDateMin(subs, s => s.due); return wrap(datePill(d ? fmtDate(d) : null)); }   // earliest sub-item date
     return null;   // owner / updated → keep the parent's own (editable) value, no roll-up
@@ -4253,7 +4256,8 @@ function ownerPicker(anchor, taskId) {
 function statusCellEl(task) {
   const s = statusOf(task);
   const cell = h("div", { class: "cell", style: "padding:0 8px" });
-  const fill = h("div", { class: "cell-fill", style: `background:${s.color};color:${textColorOn(s.color)}`, title: s.label || "Not Started" }, s.label || "Not Started");
+  const lab = stLabel(s);
+  const fill = h("div", { class: "cell-fill", style: `background:${s.color};color:${textColorOn(s.color)}`, title: lab }, lab);
   fill.addEventListener("click", () => statusPicker(fill, task.id));
   cell.append(fill);
   return cell;
@@ -4265,7 +4269,7 @@ function statusPicker(anchor, taskId) {
     for (const s of STATUSES) {
       el.append(h("div", {
         class: "dd-color",
-        style: `background:${s.color}`,
+        style: `background:${s.color};color:${textColorOn(s.color)}`,
         onclick: () => {
           const t = locateTask(taskId)?.task;
           if (!t) return;
@@ -4276,7 +4280,7 @@ function statusPicker(anchor, taskId) {
           close();
           softRender();
         },
-      }, s.label));
+      }, stLabel(s)));
     }
     el.append(h("hr", { class: "dd-sep" }),
       h("button", { class: "dd-footer-btn", onclick: () => { close(); systemLabelEditor(anchor, "status"); } }, "✎ Edit Labels"));
@@ -4530,7 +4534,7 @@ function kanbanViewEl(board) {
       for (const t of visibleTasks(g)) if (t.status === s.id) tasks.push({ t, g });
     }
     const col = h("div", { class: "kb-col" });
-    const head = h("div", { class: "kb-head", style: `background:${s.color}`, draggable: canEditBoard(board) ? "true" : null, title: canEditBoard(board) ? "Drag to reorder column" : "" }, s.label, h("span", {}, `${tasks.length}`));
+    const head = h("div", { class: "kb-head", style: `background:${s.color};color:${textColorOn(s.color)}`, draggable: canEditBoard(board) ? "true" : null, title: canEditBoard(board) ? "Drag to reorder column" : "" }, stLabel(s), h("span", {}, `${tasks.length}`));
     if (canEditBoard(board)) {
       head.addEventListener("dragstart", (e) => { ui.drag = { type: "kbcol", statusId: s.id }; e.dataTransfer.effectAllowed = "move"; col.classList.add("kb-col-dragging"); e.stopPropagation(); });
       head.addEventListener("dragend", () => { ui.drag = null; document.querySelectorAll(".kb-col-dragging,.kb-col-drop").forEach(x => x.classList.remove("kb-col-dragging", "kb-col-drop")); });
@@ -4588,7 +4592,7 @@ function kanbanStatusBar(board, compact) {
   for (const s of STATUSES) {
     const n = counts[s.id] || 0; if (!n) continue;
     const pct = Math.round(n / total * 100);
-    wrap.append(h("span", { class: "kb-statusseg", style: `flex:${n};background:${s.color}`, title: `${s.label} · ${n}/${total} (${pct}%)` }));
+    wrap.append(h("span", { class: "kb-statusseg", style: `flex:${n};background:${s.color}`, title: `${stLabel(s)} · ${n}/${total} (${pct}%)` }));
   }
   return wrap;
 }
@@ -4687,7 +4691,7 @@ function kanbanSubitemEl(task, si, editable) {
 function subStatusPicker(anchor, task, si) {
   if (!canEditBoard(getBoard())) { toast("View only"); return; }
   openDropdown(anchor, (el, close) => {
-    for (const s of STATUSES) el.append(h("div", { class: "dd-color", style: `background:${s.color}`, onclick: () => { si.status = s.id; touch(task); save(); close(); render(); } }, s.label));
+    for (const s of STATUSES) el.append(h("div", { class: "dd-color", style: `background:${s.color};color:${textColorOn(s.color)}`, onclick: () => { si.status = s.id; touch(task); save(); close(); render(); } }, stLabel(s)));
     el.append(h("hr", { class: "dd-sep" }), h("div", { class: "dd-item", onclick: () => { si.status = null; touch(task); save(); close(); render(); } }, ico("x", 13), h("span", {}, "Clear")));
   }, { minWidth: 160 });
 }
@@ -4827,7 +4831,7 @@ function calendarViewEl(board) {
     const tasks = byDate.get(iso) || [];
     tasks.slice(0, 3).forEach(t => {
       const s = effStatus(board, t);
-      const chip = h("button", { class: "cal-chip", style: `background:${s.color};color:${textColorOn(s.color)}`, title: `${t.name} — ${s.label || "Not Started"}`, draggable: "true" }, t.name);
+      const chip = h("button", { class: "cal-chip", style: `background:${s.color};color:${textColorOn(s.color)}`, title: `${t.name} — ${stLabel(s)}`, draggable: "true" }, t.name);
       chip.addEventListener("click", () => { ui.panel = t.id; renderPanel(); });
       chip.addEventListener("dragstart", (e) => {
         ui.drag = { type: "chip", taskId: t.id };
@@ -4845,7 +4849,7 @@ function calendarViewEl(board) {
           dd.append(h("div", { class: "cal-pop-title" }, fmtDate(iso)));
           for (const t of tasks) {
             const s = effStatus(board, t);
-            dd.append(h("button", { class: "cal-pop-bar", style: `background:${s.color};color:${textColorOn(s.color)}`, title: `${t.name} — ${s.label || "Not Started"}`, onclick: () => { close(); ui.panel = t.id; renderPanel(); } }, t.name));
+            dd.append(h("button", { class: "cal-pop-bar", style: `background:${s.color};color:${textColorOn(s.color)}`, title: `${t.name} — ${stLabel(s)}`, onclick: () => { close(); ui.panel = t.id; renderPanel(); } }, t.name));
           }
         }, { minWidth: 260 });
       });
@@ -4881,7 +4885,7 @@ function calendarViewEl(board) {
   for (const arr of byDate.values()) for (const t of arr) present.add(t.status);
   const legend = h("div", { class: "cal-legend" });
   for (const s of STATUSES) if (present.has(s.id))
-    legend.append(h("span", { class: "cal-leg" }, h("span", { class: "cal-dot", style: `background:${s.color}` }), h("span", {}, s.label || "Not Started")));
+    legend.append(h("span", { class: "cal-leg" }, h("span", { class: "cal-dot", style: `background:${s.color}` }), h("span", {}, stLabel(s))));
   if (legend.children.length) cal.append(legend);
   return cal;
 }
@@ -5018,7 +5022,7 @@ function whFilterPanel(anchor, redraw) {
 }
 
 function statusRows(tasks) {
-  return STATUSES.map(s => ({ label: s.label, n: tasks.filter(t => t.status === s.id).length, color: s.color }));
+  return STATUSES.map(s => ({ label: stLabel(s), n: tasks.filter(t => t.status === s.id).length, color: s.color }));
 }
 function priorityRows(tasks) {
   return PRIORITIES.map(p => ({ label: p.label || "None", n: tasks.filter(t => t.priority === p.id).length, color: p.color }));
@@ -7060,7 +7064,7 @@ function exportCSV(board) {
         g.name,
         t.name,
         t.owners.map(id => personById(id)?.name || "").filter(Boolean).join("; "),
-        statusOf(t).label,
+        stLabel(statusOf(t)),
         t.due || "",
         prioOf(t).label,
         t.desc || "",
