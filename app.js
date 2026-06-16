@@ -4104,9 +4104,24 @@ function subTimelineRange(subs, colId) {
   const a = all[0], b = all[all.length - 1];
   return a === b ? fmtDate(a) : fmtDate(a) + " - " + fmtDate(b);
 }
+// popover to edit each sub-item's value for one column, from the parent roll-up
+function subMultiEditor(anchor, parent, oc) {
+  if (!canEditBoard(getBoard())) { toast("View only — ask an SPV for edit access"); return; }
+  const subs = parent.subitems || [];
+  if (!subs.length) return;
+  openDropdown(anchor, (el) => {
+    el.classList.add("mm-pop");
+    el.append(h("div", { class: "dd-title" }, "Update each sub-item"));
+    for (const si of subs) {
+      const cell = oc.kind === "sys" ? sysCellEl(si, oc.id) : cellEditorEl(getBoard(), si, oc.col);
+      el.append(h("div", { class: "mm-row" }, h("span", { class: "mm-name", title: si.name }, si.name), cell));
+    }
+  }, { minWidth: 300 });
+}
+
 function subSummaryCell(board, task, oc) {
   const subs = task.subitems || [];
-  const wrap = (kid) => h("div", { class: "cell sub-sum" }, kid);
+  const wrap = (kid) => { const c = h("div", { class: "cell sub-sum", title: "Click to update sub-items" }, kid); c.addEventListener("click", () => subMultiEditor(c, task, oc)); return c; };
   const datePill = (txt) => txt ? h("span", { class: "sub-sum-date" }, txt) : h("span", { class: "muted" }, "—");
   if (oc.kind === "sys") {
     if (oc.id === "status") return wrap(subLabelBar(subs, s => statusOf(s).color, s => statusOf(s).label || "Blank"));
