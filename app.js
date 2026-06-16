@@ -4861,6 +4861,16 @@ function calendarViewEl(board) {
     grid.append(cell);
   }
   cal.append(grid);
+
+  // status legend — only the statuses actually present this month, "Empty" first
+  const present = new Set();
+  for (const arr of byDate.values()) for (const t of arr) present.add(t.status);
+  const legend = h("div", { class: "cal-legend" });
+  if (present.has("none") || [...present].some(s => !STATUSES.find(x => x.id === s)))
+    legend.append(h("span", { class: "cal-leg" }, h("span", { class: "cal-dot", style: "background:#c4c4c4" }), h("span", {}, "Empty")));
+  for (const s of STATUSES) if (present.has(s.id))
+    legend.append(h("span", { class: "cal-leg" }, h("span", { class: "cal-dot", style: `background:${s.color}` }), h("span", {}, s.label)));
+  if (legend.children.length) cal.append(legend);
   return cal;
 }
 
