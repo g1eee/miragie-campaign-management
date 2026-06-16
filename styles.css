@@ -1083,6 +1083,7 @@ input, textarea, select {
 .update-head .row-act { margin-left: auto; }
 .update-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
 .cal-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.ml-tag { flex: none; font-size: 11px; font-weight: 700; color: var(--text); background: var(--surface-2); border-radius: 6px; padding: 3px 9px; letter-spacing: .2px; }
 .cal-pop-day { padding: 10px; }
 .cal-pop-title { font-weight: 700; font-size: 14px; margin: 2px 2px 8px; }
 .cal-pop-bar { display: block; width: 100%; text-align: left; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: filter .12s; }

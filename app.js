@@ -1991,7 +1991,7 @@ function boardHeadEl(board) {
   tabs.append(plusTab);
 
   return h("div", { class: "board-head" },
-    h("div", { class: "bh-top" }, title, h("div", { class: "bh-spacer" }), inviteBtn, menuBtn),
+    h("div", { class: "bh-top" }, title, board.multiLevel ? h("span", { class: "ml-tag" }, "Multi-level") : null, h("div", { class: "bh-spacer" }), inviteBtn, menuBtn),
     desc,
     tabs,
   );
