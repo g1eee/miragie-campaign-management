@@ -1134,8 +1134,12 @@ input, textarea, select {
 .sub-add-row .sub-add-input:focus { color: var(--text); }
 .board-ro .sub-caret { pointer-events: auto; }
 /* multi-level parent roll-up cells */
-.cell.sub-sum { padding: 0 8px; cursor: default; }
+.cell.sub-sum { padding: 0 8px; cursor: default; justify-content: center; }
 .cell.sub-sum .mirror-bar { height: 20px; }
+/* center column headers (keep the Task/name header left-aligned) */
+.col-head-cell:not(.name-col) { justify-content: center !important; position: relative; }
+.col-head-cell:not(.name-col) .col-name { text-align: center; }
+.col-head-cell:not(.name-col) .col-menu-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
 .sub-sum-date { font-size: 12px; color: var(--text-2); background: var(--surface-2); border-radius: 999px; padding: 2px 10px; }
 
 /* kanban: drag-reorder columns */

@@ -4112,12 +4112,7 @@ function subSummaryCell(board, task, oc) {
     if (oc.id === "status") return wrap(subLabelBar(subs, s => statusOf(s).color, s => statusOf(s).label || "Blank"));
     if (oc.id === "priority") return wrap(subLabelBar(subs, s => prioOf(s).color, s => prioOf(s).label || "Blank"));
     if (oc.id === "date") { const d = subDateMin(subs, s => s.due); return wrap(datePill(d ? fmtDate(d) : null)); }   // earliest sub-item date
-    if (oc.id === "owner") {
-      const ids = [...new Set(subs.flatMap(s => s.owners || []))].map(personById).filter(Boolean);
-      if (!ids.length) return wrap(h("span", { class: "muted" }, "—"));
-      const st = h("span", { class: "avatar-stack" }); ids.slice(0, 3).forEach(p => st.append(avatarEl(p, 22))); return wrap(st);
-    }
-    return null;   // "updated" etc → keep parent value
+    return null;   // owner / updated → keep the parent's own (editable) value, no roll-up
   }
   const col = oc.col;
   if (LABEL_TYPES.includes(col.type)) return wrap(subLabelBar(subs,
