@@ -3227,21 +3227,45 @@ function colTimelineCellEl(task, col) {
 
   const open = () => openDropdown(cell, (dd, close) => {
     const cur = { ...(task.cells[col.id] || {}) };
-    // inline native date inputs — picking a date never closes the popover; it
-    // only auto-closes once BOTH start and end are filled.
-    const field = (label, key) => {
-      const inp = h("input", { type: "date", class: "cvr-sel tl-input", value: cur[key] || "" });
-      inp.addEventListener("keydown", (e) => e.stopPropagation());
-      inp.addEventListener("change", () => {
-        cur[key] = inp.value || "";
-        setColVal(task, col, { ...cur });
-        if (cur.start && cur.end) { close(); softRenderTable(getBoard()); }
-      });
-      return h("label", { class: "tl-row" }, h("span", { class: "muted tl-lbl" }, label), inp);
+    let active = cur.start ? "end" : "start";   // which end we're picking
+    const b0 = (cur[active] && new Date(cur[active] + "T00:00:00")) || new Date();
+    let vy = b0.getFullYear(), vm = b0.getMonth();
+    const root = h("div", { class: "tl-pop" });
+    const draw = () => {
+      root.replaceChildren();
+      // Start / End chips — click to choose which end to set
+      const chip = (label, key) => {
+        const b = h("button", { class: "tl-chip" + (active === key ? " on" : "") },
+          h("span", { class: "muted" }, label), h("span", {}, cur[key] ? fmtDate(cur[key]) : "—"));
+        b.addEventListener("click", () => { active = key; const d = cur[key] ? new Date(cur[key] + "T00:00:00") : new Date(); vy = d.getFullYear(); vm = d.getMonth(); draw(); });
+        return b;
+      };
+      root.append(h("div", { class: "tl-chips" }, chip("Start", "start"), chip("End", "end")));
+      const prev = h("button", { class: "cal-nav", onclick: () => { vm--; if (vm < 0) { vm = 11; vy--; } draw(); } }, ico("chevLeft", 16));
+      const next = h("button", { class: "cal-nav", onclick: () => { vm++; if (vm > 11) { vm = 0; vy++; } draw(); } }, ico("chevRight", 16));
+      root.append(h("div", { class: "cal-bar" }, h("b", { style: "flex:1" }, MONTHS[vm] + " " + vy), prev, next));
+      const wk = h("div", { class: "cal-grid cal-wk" }); ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].forEach(d => wk.append(h("span", { class: "cal-wd" }, d))); root.append(wk);
+      const grid = h("div", { class: "cal-grid" });
+      const lead = (new Date(vy, vm, 1).getDay() + 6) % 7;
+      const start = new Date(vy, vm, 1 - lead);
+      const todayIso = todayISO();
+      for (let i = 0; i < 42; i++) {
+        const d = new Date(start); d.setDate(start.getDate() + i);
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const inRange = cur.start && cur.end && iso >= cur.start && iso <= cur.end;
+        const cls = "cal-day" + (d.getMonth() !== vm ? " out" : "") + (iso === cur[active] ? " sel" : "") + (inRange ? " inrange" : "") + (iso === todayIso ? " today" : "");
+        grid.append(h("button", { class: cls, onclick: () => {
+          cur[active] = iso; setColVal(task, col, { ...cur });
+          if (cur.start && cur.end) { close(); softRenderTable(getBoard()); }
+          else { active = active === "start" ? "end" : "start"; draw(); }
+        } }, String(d.getDate())));
+      }
+      root.append(grid);
+      root.append(h("button", { class: "tl-clear", onclick: () => { setColVal(task, col, ""); close(); softRenderTable(getBoard()); } }, "Clear"));
     };
-    const clr = h("button", { class: "tl-clear", onclick: () => { setColVal(task, col, ""); close(); softRenderTable(getBoard()); } }, "Clear");
-    dd.append(h("div", { class: "date-pop" }, field("Start", "start"), field("End", "end"), clr));
-  }, { minWidth: 240 });
+    draw();
+    dd.append(root);
+  }, { minWidth: 250 });
 
   cell.addEventListener("click", open);
   return cell;

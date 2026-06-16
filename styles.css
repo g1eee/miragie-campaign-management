@@ -1141,12 +1141,13 @@ input, textarea, select {
 .col-head-cell .col-name { text-align: center; }
 .col-head-cell .col-menu-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
 .sub-sum-date { font-size: 12px; color: var(--text-2); background: var(--surface-2); border-radius: 999px; padding: 2px 10px; }
-/* timeline inline date popover */
-.date-pop { display: flex; flex-direction: column; gap: 8px; padding: 4px; }
-.tl-row { display: flex; align-items: center; gap: 10px; }
-.tl-lbl { width: 40px; flex: none; font-size: 12px; }
-.tl-input { flex: 1; height: 34px; }
-.tl-clear { height: 32px; border-radius: 8px; border: 1px solid var(--border); color: var(--text); font-weight: 500; }
+/* timeline inline calendar popover */
+.tl-pop { display: flex; flex-direction: column; gap: 8px; padding: 4px; width: 250px; }
+.tl-chips { display: flex; gap: 6px; }
+.tl-chip { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 9px; font-size: 13px; font-weight: 600; }
+.tl-chip.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
+.cal-day.inrange { background: var(--primary-soft); border-radius: 0; }
+.tl-clear { height: 32px; border-radius: 8px; border: 1px solid var(--border); color: var(--text); font-weight: 500; margin-top: 2px; }
 .tl-clear:hover { background: var(--surface-2); }
 
 /* kanban: drag-reorder columns */
