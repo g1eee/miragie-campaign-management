@@ -4760,6 +4760,19 @@ function taskDates(board, t) {
   return [...out];
 }
 
+// status used to colour a calendar chip: dominant sub-item status for a
+// multi-level parent, else the task's own status.
+function effStatus(board, t) {
+  if (board.multiLevel && Array.isArray(t.subitems) && t.subitems.length) {
+    const count = {};
+    for (const s of t.subitems) { const id = s.status || "none"; count[id] = (count[id] || 0) + 1; }
+    let best = "none", bn = -1;
+    for (const id in count) if (count[id] > bn) { bn = count[id]; best = id; }
+    return STATUSES.find(s => s.id === best) || statusOf(t);
+  }
+  return statusOf(t);
+}
+
 function calendarViewEl(board) {
   const now = new Date();
   if (!ui.cal) ui.cal = { y: now.getFullYear(), m: now.getMonth() };
@@ -4813,8 +4826,8 @@ function calendarViewEl(board) {
 
     const tasks = byDate.get(iso) || [];
     tasks.slice(0, 3).forEach(t => {
-      const s = statusOf(t);
-      const chip = h("button", { class: "cal-chip", style: `background:${s.color}`, title: `${t.name} — ${s.label}`, draggable: "true" }, t.name);
+      const s = effStatus(board, t);
+      const chip = h("button", { class: "cal-chip", style: `background:${s.color};color:${textColorOn(s.color)}`, title: `${t.name} — ${s.label || "Not Started"}`, draggable: "true" }, t.name);
       chip.addEventListener("click", () => { ui.panel = t.id; renderPanel(); });
       chip.addEventListener("dragstart", (e) => {
         ui.drag = { type: "chip", taskId: t.id };
@@ -4831,8 +4844,8 @@ function calendarViewEl(board) {
           dd.classList.add("cal-pop-day");
           dd.append(h("div", { class: "cal-pop-title" }, fmtDate(iso)));
           for (const t of tasks) {
-            const s = statusOf(t);
-            dd.append(h("button", { class: "cal-pop-bar", style: `background:${s.color};color:${textColorOn(s.color)}`, title: `${t.name} — ${s.label}`, onclick: () => { close(); ui.panel = t.id; renderPanel(); } }, t.name));
+            const s = effStatus(board, t);
+            dd.append(h("button", { class: "cal-pop-bar", style: `background:${s.color};color:${textColorOn(s.color)}`, title: `${t.name} — ${s.label || "Not Started"}`, onclick: () => { close(); ui.panel = t.id; renderPanel(); } }, t.name));
           }
         }, { minWidth: 260 });
       });
