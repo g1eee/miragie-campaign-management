@@ -3226,31 +3226,22 @@ function colTimelineCellEl(task, col) {
   else cell.append(ico("gantt", 14));   // only show the pill once BOTH start & end are set
 
   const open = () => openDropdown(cell, (dd, close) => {
-    const cur = task.cells[col.id] || {};
+    const cur = { ...(task.cells[col.id] || {}) };
+    // inline native date inputs — picking a date never closes the popover; it
+    // only auto-closes once BOTH start and end are filled.
     const field = (label, key) => {
-      const val = cur[key];
-      const b = h("button", { class: "tl-field" },
-        h("span", { class: "muted" }, label),
-        h("span", { class: val ? "" : "muted" }, val ? fmtDate(val) : "mm/dd/yyyy"),
-        ico("calendar", 14));
-      // clicking opens the small calendar; on pick, reopen this timeline popover
-      b.addEventListener("click", () => calendarPicker(b, {
-        value: val || "",
-        // keep the timeline popover open until BOTH start & end are set, then close
-        onPick: (iso) => {
-          const c = { ...(task.cells[col.id] || {}) }; c[key] = iso; setColVal(task, col, c);
-          if (c.start && c.end) { closeDropdowns(); softRenderTable(getBoard()); } else open();
-        },
-        onClear: () => { const c = { ...(task.cells[col.id] || {}) }; c[key] = ""; setColVal(task, col, c); open(); },
-      }));
-      return b;
+      const inp = h("input", { type: "date", class: "cvr-sel tl-input", value: cur[key] || "" });
+      inp.addEventListener("keydown", (e) => e.stopPropagation());
+      inp.addEventListener("change", () => {
+        cur[key] = inp.value || "";
+        setColVal(task, col, { ...cur });
+        if (cur.start && cur.end) { close(); softRenderTable(getBoard()); }
+      });
+      return h("label", { class: "tl-row" }, h("span", { class: "muted tl-lbl" }, label), inp);
     };
-    const clr = h("button", { onclick: () => { setColVal(task, col, ""); close(); softRenderTable(getBoard()); } }, "Clear");
-    dd.append(h("div", { class: "date-pop" },
-      field("Start", "start"),
-      field("End", "end"),
-      h("div", { class: "date-pop-row" }, clr)));
-  }, { minWidth: 220 });
+    const clr = h("button", { class: "tl-clear", onclick: () => { setColVal(task, col, ""); close(); softRenderTable(getBoard()); } }, "Clear");
+    dd.append(h("div", { class: "date-pop" }, field("Start", "start"), field("End", "end"), clr));
+  }, { minWidth: 240 });
 
   cell.addEventListener("click", open);
   return cell;
