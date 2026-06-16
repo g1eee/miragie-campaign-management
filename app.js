@@ -3220,9 +3220,10 @@ function colCheckboxCellEl(task, col) {
 // --- Timeline: start–end date range ---
 function colTimelineCellEl(task, col) {
   const v = task.cells[col.id] || {};
-  const cell = h("div", { class: "cell date-cell" + (v.start || v.end ? "" : " empty"), title: "Set date range" });
-  if (v.start || v.end) cell.append(h("span", { class: "range-pill" }, fmtRange(v.start || v.end, v.end || v.start)));
-  else cell.append(ico("gantt", 14));
+  const complete = v.start && v.end;
+  const cell = h("div", { class: "cell date-cell" + (complete ? "" : " empty"), title: "Set date range" });
+  if (complete) cell.append(h("span", { class: "range-pill" }, fmtRange(v.start, v.end)));
+  else cell.append(ico("gantt", 14));   // only show the pill once BOTH start & end are set
 
   const open = () => openDropdown(cell, (dd, close) => {
     const cur = task.cells[col.id] || {};
