@@ -1777,8 +1777,15 @@ function reorderBoard(dragId, targetId, before) {
 function addNewMenu(anchor) {
   openDropdown(anchor, (el, close) => {
     el.append(h("div", { class: "dd-title" }, "Add new"));
-    el.append(ddItem("table", "Board", () => { close(); addBoard({ name: "New Board" }); }));
-    el.append(ddItem("subitems", "Multi-level board", () => { close(); addBoard({ name: "New multi-level board", multiLevel: true }); }));
+    const boardItem = h("div", { class: "dd-item" }, ico("table", 15), h("span", { style: "flex:1" }, "Board"), ico("chevRight", 13));
+    boardItem.addEventListener("click", (e) => {
+      e.stopPropagation();
+      nestedMenu(boardItem, [
+        { label: "New board", value: "board" },
+        { label: "New multi-level board", value: "multi" },
+      ], (o) => { close(); o.value === "multi" ? addBoard({ name: "New multi-level board", multiLevel: true }) : addBoard({ name: "New Board" }); });
+    });
+    el.append(boardItem);
     el.append(ddItem("dashboard", "Dashboard", () => {
       close();
       addBoard({ name: "New Dashboard", icon: "dashboard", view: "dashboard", views: ["dashboard"], kind: "dashboard", toast: "Dashboard created" });
