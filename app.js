@@ -214,7 +214,7 @@ function relTime(ts) {
 const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map(w => w[0].toUpperCase()).join("");
 const statusOf = (t) => STATUSES.find(s => s.id === t.status) || { id: t.status, label: "", color: "#c4c4c4" };
 // display label for a status: blank or any lone dash → "Not Started" (handles legacy data)
-const isBlankLabel = (l) => !l || /^[\s—–-]*$/.test(l);
+const isBlankLabel = (l) => !l || /^[^\p{L}\p{N}]*$/u.test(l);  // empty or only symbols/dashes (no letters/digits)
 const stLabel = (s) => (s && !isBlankLabel(s.label)) ? s.label : "Not Started";
 const prioOf = (t) => PRIORITIES.find(p => p.id === t.priority) || { id: t.priority, label: "", color: "#c4c4c4" };
 
