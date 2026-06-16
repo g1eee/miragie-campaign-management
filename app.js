@@ -2249,6 +2249,9 @@ function toolbarEl(board) {
   hideBtn.addEventListener("click", () => hidePanel(hideBtn, board));
   bar.append(hideBtn);
 
+  // kanban: compact status progress bar, right-aligned in the toolbar
+  if (board.view === "kanban") bar.append(kanbanStatusBar(board, true));
+
   return bar;
 }
 
@@ -4335,7 +4338,6 @@ function attachRowDropZone(row, group, idxFn) {
 
 function kanbanViewEl(board) {
   const kb = h("div", { class: "view-root kanban-view" });
-  kb.append(kanbanStatusBar(board));
   const lanes = h("div", { class: "kanban" });
   for (const s of STATUSES) {
     const tasks = [];
@@ -4393,10 +4395,10 @@ function kanbanViewEl(board) {
 }
 
 // horizontal progress bar summarising task counts per status (monday-style)
-function kanbanStatusBar(board) {
+function kanbanStatusBar(board, compact) {
   const counts = {}; let total = 0;
   for (const g of board.groups) for (const t of visibleTasks(g)) { counts[t.status] = (counts[t.status] || 0) + 1; total++; }
-  const wrap = h("div", { class: "kb-statusbar" });
+  const wrap = h("div", { class: "kb-statusbar" + (compact ? " compact" : "") });
   if (!total) return wrap;
   for (const s of STATUSES) {
     const n = counts[s.id] || 0; if (!n) continue;

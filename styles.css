@@ -1086,9 +1086,10 @@ input, textarea, select {
 /* ============ Kanban ============ */
 
 .kanban-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.kb-statusbar { display: flex; gap: 2px; height: 14px; margin: 8px 32px 12px; flex: none; }
+.kb-statusbar { display: flex; gap: 2px; height: 12px; flex: none; }
+.kb-statusbar.compact { width: 150px; margin-left: auto; align-self: center; }
 .kb-statusseg { min-width: 8px; border-radius: 3px; transition: flex .2s; }
-.kanban { display: flex; gap: 14px; padding: 0 32px 120px; align-items: flex-start; overflow-x: auto; flex: 1; }
+.kanban { display: flex; gap: 14px; padding: 4px 32px 120px; align-items: flex-start; overflow-x: auto; flex: 1; }
 
 .kb-col { width: 280px; flex: none; background: var(--surface); border-radius: 8px; }
 .kb-col.drop-target { outline: 2px dashed var(--primary); outline-offset: -2px; }
