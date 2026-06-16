@@ -1082,6 +1082,7 @@ input, textarea, select {
 .update-head time { color: var(--text-2); font-size: 12px; }
 .update-head .row-act { margin-left: auto; }
 .update-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.cal-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 .mention { color: var(--primary); font-weight: 600; border-radius: 4px; padding: 0 2px; }
 .mention:hover { background: var(--primary-soft); }
 .mention-all { color: #a25ddc; }
@@ -1245,7 +1246,8 @@ input, textarea, select {
   text-overflow: ellipsis;
   cursor: pointer;
 }
-.cal-more { font-size: 11px; color: var(--text-2); padding: 0 4px; }
+.cal-more { font-size: 11px; color: var(--text-2); padding: 2px 4px; cursor: pointer; border-radius: 5px; text-align: left; font-weight: 600; }
+.cal-more:hover { background: var(--surface-2); color: var(--primary); }
 
 /* ============ Toasts ============ */
 

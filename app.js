@@ -4822,7 +4822,21 @@ function calendarViewEl(board) {
       chip.addEventListener("dragend", () => { ui.drag = null; });
       cell.append(chip);
     });
-    if (tasks.length > 3) cell.append(h("div", { class: "cal-more" }, `+${tasks.length - 3} more`));
+    if (tasks.length > 3) {
+      const more = h("button", { class: "cal-more", title: "Show all" }, `+${tasks.length - 3} more`);
+      more.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openDropdown(more, (dd, close) => {
+          dd.append(h("div", { class: "dd-title" }, fmtDate(iso) + " · " + tasks.length + " items"));
+          for (const t of tasks) {
+            const s = statusOf(t);
+            dd.append(h("div", { class: "dd-item", onclick: () => { close(); ui.panel = t.id; renderPanel(); } },
+              h("span", { class: "cal-dot", style: `background:${s.color}` }), h("span", { style: "flex:1" }, t.name)));
+          }
+        }, { minWidth: 240 });
+      });
+      cell.append(more);
+    }
 
     cell.addEventListener("dragover", (e) => {
       if (!ui.drag) return;
