@@ -3853,7 +3853,7 @@ function colPeopleCellEl(task, col) {
     for (const p of state.people) {
       const cur = Array.isArray(task.cells[col.id]) ? task.cells[col.id] : [];
       const has = cur.includes(p.id);
-      dd.append(h("div", { class: "dd-item", onclick: () => { let arr = Array.isArray(task.cells[col.id]) ? [...task.cells[col.id]] : []; arr.includes(p.id) ? arr = arr.filter(x => x !== p.id) : arr.push(p.id); setColVal(task, col, arr); softRender(); refreshDd(); } },
+      dd.append(h("div", { class: "dd-item", onclick: () => { let arr = Array.isArray(task.cells[col.id]) ? [...task.cells[col.id]] : []; arr.includes(p.id) ? arr = arr.filter(x => x !== p.id) : arr.push(p.id); setColVal(task, col, arr); closeDropdowns(); softRender(); } },
         avatarEl(p, 24), h("span", { style: "flex:1" }, p.name), has ? ico("check", 14) : null));
     }
   }, { minWidth: 220 }));
@@ -4059,8 +4059,8 @@ function ownerPicker(anchor, taskId) {
         else t.owners.push(p.id);
         touch(t);
         save();
+        closeDropdowns();
         softRender();
-        refreshDd();
       } }, avatarEl(p, 24), h("span", { style: "flex:1" }, p.name), has ? ico("check", 14) : null);
       el.append(it);
     }
@@ -4525,7 +4525,7 @@ function subOwnerPicker(anchor, task, si) {
   openDropdown(anchor, (el) => {
     for (const p of state.people) {
       const has = si.owners.includes(p.id);
-      el.append(h("div", { class: "dd-item", onclick: () => { si.owners = has ? si.owners.filter(x => x !== p.id) : [...si.owners, p.id]; touch(task); save(); refreshDd(); softRender(); } },
+      el.append(h("div", { class: "dd-item", onclick: () => { si.owners = has ? si.owners.filter(x => x !== p.id) : [...si.owners, p.id]; touch(task); save(); closeDropdowns(); render(); } },
         avatarEl(p, 22), h("span", { style: "flex:1" }, p.name), has ? ico("check", 14) : null));
     }
   }, { minWidth: 210 });
