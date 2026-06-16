@@ -1153,6 +1153,8 @@ function addBoard(opts = {}) {
     kind: opts.kind || "board",
     workspaceId: opts.workspaceId || state.activeWorkspace,
     hidden: [],
+    removed: [],
+    colNames: {},
     doc: "",
     widgets: [],
     columns: [],
@@ -2810,7 +2812,7 @@ function nameColHeaderEl(board) {
     e.stopPropagation();
     openDropdown(menu, (el, close) => el.append(ddItem("pencil", "Rename column", () => {
       close();
-      modalPrompt("Rename column", "Column name", colLabel(board, { id: "name", label: "Task" }), (v) => { board.colNames.name = v; save(); render(); });
+      modalPrompt("Rename column", "Column name", colLabel(board, { id: "name", label: "Task" }), (v) => { (board.colNames || (board.colNames = {})).name = v; save(); render(); });
     })), { minWidth: 180 });
   });
   cell.append(menu);
@@ -2831,7 +2833,7 @@ function sysColMenu(anchor, board, c) {
   openDropdown(anchor, (el, close) => {
     el.append(ddItem("pencil", "Rename column", () => {
       close();
-      modalPrompt("Rename column", "Column name", colLabel(board, c), (v) => { board.colNames[c.id] = v; save(); render(); });
+      modalPrompt("Rename column", "Column name", colLabel(board, c), (v) => { (board.colNames || (board.colNames = {}))[c.id] = v; save(); render(); });
     }));
     if (c.id === "status" || c.id === "priority") el.append(ddItem("kanban", "Edit Labels", () => { close(); systemLabelEditor(anchor, c.id); }));
     el.append(h("hr", { class: "dd-sep" }), ddItem("eyeOff", "Hide column", () => { close(); if (!board.hidden.includes(c.id)) board.hidden.push(c.id); save(); render(); }));
