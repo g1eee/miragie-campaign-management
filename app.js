@@ -2646,21 +2646,24 @@ function groupEl(board, group) {
   attachRowDropZone(addRow, group, () => group.tasks.length);
   table.append(addRow);
 
-  // ---- summary row
+  // ---- summary row. On multi-level boards, aggregate the SUB-ITEMS (a parent's
+  // own status isn't meaningful when it's rolled up), falling back to the task
+  // itself when it has no sub-items.
   if (group.tasks.length) {
+    const st = summaryItems(board, tasks);
     const sum = h("div", { class: "g-row summary-row", style: `grid-template-columns:${tpl}` });
     sum.append(h("div", { class: "cell check-col" }), h("div", { class: "cell name-col" }));
     for (const oc of orderedCols(board)) {
       const cell = h("div", { class: "cell" });
       if (oc.kind === "sys") {
-        if (oc.id === "status") cell.append(batteryEl(tasks, "status"));
-        else if (oc.id === "priority") cell.append(batteryEl(tasks, "priority"));
-        else if (oc.id === "date") cell.append(rangePillEl(tasks));
+        if (oc.id === "status") cell.append(batteryEl(st, "status"));
+        else if (oc.id === "priority") cell.append(batteryEl(st, "priority"));
+        else if (oc.id === "date") cell.append(rangePillEl(st));
       } else {
         const col = oc.col;
-        if (col.type === "numbers") { const total = tasks.reduce((a, t) => a + (Number(t.cells[col.id]) || 0), 0); cell.append(h("span", { style: "font-weight:700" }, total ? String(Math.round(total * 100) / 100) : "")); }
-        else if (col.type === "checkbox") { const done = tasks.filter(t => !!t.cells[col.id]).length; cell.append(h("span", { class: "sum-check" + (tasks.length && done === tasks.length ? " all" : "") }, `${done}/${tasks.length}`)); }
-        else if (LABEL_TYPES.includes(col.type)) cell.append(colBatteryEl(tasks, col));
+        if (col.type === "numbers") { const total = st.reduce((a, t) => a + (Number(t.cells[col.id]) || 0), 0); cell.append(h("span", { style: "font-weight:700" }, total ? String(Math.round(total * 100) / 100) : "")); }
+        else if (col.type === "checkbox") { const done = st.filter(t => !!t.cells[col.id]).length; cell.append(h("span", { class: "sum-check" + (st.length && done === st.length ? " all" : "") }, `${done}/${st.length}`)); }
+        else if (LABEL_TYPES.includes(col.type)) cell.append(colBatteryEl(st, col));
       }
       sum.append(cell);
     }
@@ -2669,6 +2672,18 @@ function groupEl(board, group) {
   }
 
   return root;
+}
+
+// effective items for group summaries: on multi-level boards, expand each task
+// into its sub-items (so the progress reflects all sub-items), else the task.
+function summaryItems(board, tasks) {
+  if (!board.multiLevel) return tasks;
+  const out = [];
+  for (const t of tasks) {
+    if (Array.isArray(t.subitems) && t.subitems.length) out.push(...t.subitems);
+    else out.push(t);
+  }
+  return out;
 }
 
 function batteryEl(tasks, kind) {
