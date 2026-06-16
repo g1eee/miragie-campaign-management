@@ -1120,6 +1120,20 @@ input, textarea, select {
 .kb-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .kb-prio { color: #fff; border-radius: 4px; font-size: 11px; padding: 1px 8px; }
 
+/* multi-level board: sub-items in the table */
+.sub-caret { display: inline-flex; align-items: center; gap: 2px; flex: none; color: var(--text-2); padding: 2px; border-radius: 4px; transition: transform .12s, background .12s; }
+.sub-caret:hover { background: var(--surface-2); color: var(--text); }
+.sub-caret.open { transform: rotate(90deg); }
+.sub-count { font-size: 10px; font-weight: 700; background: var(--surface-2); color: var(--text-2); border-radius: 999px; padding: 0 5px; min-width: 15px; text-align: center; }
+.sub-caret.open .sub-count { transform: rotate(-90deg); }
+.g-row.sub-row { background: var(--surface); }
+.g-row.sub-row .cell.name-col { padding-left: 0; }
+.sub-elbow { width: 14px; height: 14px; margin-left: 14px; border-left: 2px solid var(--border-2); border-bottom: 2px solid var(--border-2); border-bottom-left-radius: 4px; flex: none; }
+.sub-name { font-size: 13px; }
+.sub-add-row .sub-add-input { width: 100%; height: 26px; border: none; background: transparent; outline: none; font-size: 13px; color: var(--text-2); }
+.sub-add-row .sub-add-input:focus { color: var(--text); }
+.board-ro .sub-caret { pointer-events: auto; }
+
 /* kanban: drag-reorder columns */
 .kb-head { cursor: grab; }
 .kb-col-dragging { opacity: .5; }

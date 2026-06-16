@@ -84,6 +84,7 @@ const PATHS = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   bell: '<path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2 2 0 0 0 4 0"/>',
   megaphone: '<path d="M3 11v2a1 1 0 0 0 1 1h2l9 5V5l-9 5H4a1 1 0 0 0-1 1z"/><path d="M18 8a4 4 0 0 1 0 8"/>',
+  subitems: '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M8 13h11M8 18h11"/><path d="M5 12v7"/>',
   grip: '<circle cx="9" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.4" fill="currentColor" stroke="none"/>',
   chat: '<path d="M12 3a9 9 0 0 0-7.5 14L3 21l4.2-1.4A9 9 0 1 0 12 3z"/>',
   download: '<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>',
@@ -773,9 +774,20 @@ function locateTask(taskId) {
     for (const g of b.groups) {
       const idx = g.tasks.findIndex(t => t.id === taskId);
       if (idx > -1) return { board: b, group: g, idx, task: g.tasks[idx] };
+      // multi-level boards: sub-items are editable like tasks, so locate them too
+      for (const t of g.tasks) {
+        if (Array.isArray(t.subitems)) {
+          const si = t.subitems.find(s => s.id === taskId);
+          if (si) return { board: b, group: g, parent: t, task: si, isSub: true };
+        }
+      }
     }
   }
   return null;
+}
+
+function mkSubitem(name) {
+  return { id: uid(), name, owners: [], status: "none", due: "", priority: "none", cells: {}, updates: [], files: [], createdAt: Date.now(), updatedAt: Date.now(), updatedBy: state.user, sub: true };
 }
 
 function touch(task) {
@@ -1157,6 +1169,7 @@ function addBoard(opts = {}) {
     views,
     icon: opts.icon || "table",
     kind: opts.kind || "board",
+    multiLevel: !!opts.multiLevel,
     workspaceId: opts.workspaceId || state.activeWorkspace,
     hidden: [],
     removed: [],
@@ -1765,6 +1778,7 @@ function addNewMenu(anchor) {
   openDropdown(anchor, (el, close) => {
     el.append(h("div", { class: "dd-title" }, "Add new"));
     el.append(ddItem("table", "Board", () => { close(); addBoard({ name: "New Board" }); }));
+    el.append(ddItem("subitems", "Multi-level board", () => { close(); addBoard({ name: "New multi-level board", multiLevel: true }); }));
     el.append(ddItem("dashboard", "Dashboard", () => {
       close();
       addBoard({ name: "New Dashboard", icon: "dashboard", view: "dashboard", views: ["dashboard"], kind: "dashboard", toast: "Dashboard created" });
@@ -2601,9 +2615,13 @@ function groupEl(board, group) {
   headRow.append(addCol);
   table.append(headRow);
 
-  // ---- task rows
+  // ---- task rows (+ sub-item rows when a multi-level row is expanded)
   for (const task of tasks) {
     table.append(taskRowEl(board, group, task, tpl, cols));
+    if (board.multiLevel && ui.subOpen && ui.subOpen.has(task.id)) {
+      for (const si of (task.subitems || [])) table.append(subitemRowEl(board, task, si, tpl));
+      if (canEditBoard(board)) table.append(subAddRowEl(board, task, tpl));
+    }
   }
 
   // ---- add task row
@@ -3991,6 +4009,15 @@ function taskRowEl(board, group, task, tpl, cols) {
   rowMenuBtn.addEventListener("click", (e) => { e.stopPropagation(); taskMenu(rowMenuBtn, board, group, task); });
 
   const nameCell = h("div", { class: "cell name-col" }, nameSpan);
+  // multi-level: expand/collapse sub-items
+  if (board.multiLevel) {
+    const open = ui.subOpen && ui.subOpen.has(task.id);
+    const n = (task.subitems || []).length;
+    const caret = h("button", { class: "sub-caret" + (open ? " open" : ""), title: "Sub-items" }, ico("chevRight", 14));
+    if (n) caret.append(h("span", { class: "sub-count" }, n));
+    caret.addEventListener("click", (e) => { e.stopPropagation(); ui.subOpen = ui.subOpen || new Set(); open ? ui.subOpen.delete(task.id) : ui.subOpen.add(task.id); render(); });
+    nameCell.prepend(caret);
+  }
   const hasUpd = task.updates.length > 0;
   const chat = h("button", { class: "updates-chip" + (hasUpd ? " has" : ""), title: hasUpd ? `${task.updates.length} update(s)` : "Add an update" });
   if (hasUpd) chat.append(ico("chat", 15), h("span", { class: "uc-count" }, task.updates.length));
@@ -4025,6 +4052,40 @@ function taskRowEl(board, group, task, tpl, cols) {
     requestAnimationFrame(() => startNameEdit(nameSpan, task));
   }
 
+  return row;
+}
+
+// one sub-item row in a multi-level board, aligned to the same columns
+function subitemRowEl(board, parent, si, tpl) {
+  const row = h("div", { class: "g-row sub-row", style: `grid-template-columns:${tpl}`, dataset: { sub: si.id } });
+  row.append(h("div", { class: "cell check-col" }, h("span", { class: "sub-elbow" })));
+
+  const nameSpan = h("span", { class: "task-name sub-name", title: "Click to edit" }, si.name);
+  if (canEditBoard(board)) nameSpan.addEventListener("click", (e) => { e.stopPropagation(); inlineEdit(nameSpan, si.name, (v) => { si.name = v; touch(parent); save(); render(); }); });
+  const del = h("button", { class: "row-act", title: "Delete sub-item", onclick: (e) => { e.stopPropagation(); parent.subitems = (parent.subitems || []).filter(x => x !== si); touch(parent); save(); render(); } });
+  del.append(ico("x", 13));
+  row.append(h("div", { class: "cell name-col sub-namecell" }, nameSpan, h("span", { class: "row-actions" }, del)));
+
+  for (const oc of orderedCols(board)) {
+    if (oc.kind === "sys") row.append(sysCellEl(si, oc.id));
+    else if (oc.col.type === "mirror" || oc.col.type === "connect" || oc.col.type === "files") row.append(h("div", { class: "cell" }));
+    else row.append(cellEditorEl(board, si, oc.col));
+  }
+  row.append(h("div", { class: "cell" }));
+  return row;
+}
+
+function subAddRowEl(board, parent, tpl) {
+  const row = h("div", { class: "g-row sub-row sub-add-row", style: `grid-template-columns:${tpl}` });
+  row.append(h("div", { class: "cell check-col" }, h("span", { class: "sub-elbow" })));
+  const inp = h("input", { class: "sub-add-input", placeholder: "+ Add sub-item" });
+  inp.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") { const v = inp.value.trim(); if (v) { if (!Array.isArray(parent.subitems)) parent.subitems = []; parent.subitems.push(mkSubitem(v)); touch(parent); save(); render(); } }
+  });
+  row.append(h("div", { class: "cell name-col" }, inp));
+  for (const oc of orderedCols(board)) row.append(h("div", { class: "cell" }));
+  row.append(h("div", { class: "cell" }));
   return row;
 }
 
