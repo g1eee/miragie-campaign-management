@@ -557,6 +557,8 @@ function migrate() {
     for (const g of b.groups || []) for (const t of g.tasks) {
       if (!t.cells) t.cells = {};
       if (!Array.isArray(t.files)) t.files = [];
+      if (!t.status) t.status = "none";   // no status = Not Started, so it counts in progress
+      if (Array.isArray(t.subitems)) for (const si of t.subitems) { if (!si.status) si.status = "none"; }
     }
   }
   if (!state.wfFired) state.wfFired = {};
@@ -4643,7 +4645,7 @@ function kanbanCardEl(task, group) {
       add.addEventListener("click", (e) => {
         e.stopPropagation();
         const inp = h("input", { class: "kb-sub-input", placeholder: "Sub-item name" });
-        const commit = () => { const v = inp.value.trim(); if (v) { if (!Array.isArray(task.subitems)) task.subitems = []; task.subitems.push({ id: uid(), name: v, status: null, owners: [], due: null }); touch(task); save(); } render(); };
+        const commit = () => { const v = inp.value.trim(); if (v) { if (!Array.isArray(task.subitems)) task.subitems = []; task.subitems.push({ id: uid(), name: v, status: "none", owners: [], due: null }); touch(task); save(); } render(); };
         inp.addEventListener("keydown", (ev) => { ev.stopPropagation(); if (ev.key === "Enter") commit(); else if (ev.key === "Escape") render(); });
         inp.addEventListener("blur", commit);
         add.replaceChildren(inp); inp.focus();
