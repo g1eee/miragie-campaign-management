@@ -4042,9 +4042,13 @@ function taskRowEl(board, group, task, tpl, cols) {
   nameCell.append(h("span", { class: "row-actions" }, openBtn, rowMenuBtn));
   row.append(nameCell);
 
-  // dynamic cells (unified order)
+  // dynamic cells (unified order). On a multi-level parent WITH sub-items, the
+  // label/date columns roll up into a progress summary instead of the parent's value.
+  const summarize = board.multiLevel && (task.subitems || []).length > 0;
   for (const oc of orderedCols(board)) {
-    if (oc.kind === "sys") row.append(sysCellEl(task, oc.id));
+    const sum = summarize ? subSummaryCell(board, task, oc) : null;
+    if (sum) row.append(sum);
+    else if (oc.kind === "sys") row.append(sysCellEl(task, oc.id));
     else row.append(cellEditorEl(board, task, oc.col));
   }
 
@@ -4080,6 +4084,44 @@ function subitemRowEl(board, parent, si, tpl) {
   }
   row.append(h("div", { class: "cell" }));
   return row;
+}
+
+// roll-up cell for a multi-level parent: a progress bar for label columns, a
+// date range for date/timeline columns, combined avatars for owners. Returns
+// null for columns that should keep the parent's own value (text/number/etc).
+function subLabelBar(subs, colorOf, labelOf) {
+  const groups = [], map = {}; let total = 0;
+  for (const si of subs) { total++; const c = colorOf(si), l = labelOf(si); const k = l + "|" + c; if (!map[k]) { map[k] = { color: c, label: l, n: 0 }; groups.push(map[k]); } map[k].n++; }
+  const bar = h("div", { class: "mirror-bar" });
+  for (const g of groups) { const pct = Math.round(g.n / total * 100); bar.append(h("span", { class: "mirror-seg", style: `flex:${g.n};background:${g.color}`, title: `${g.label} · ${g.n}/${total} (${pct}%)` })); }
+  return bar;
+}
+function subDateRange(subs, getD) {
+  const ds = subs.map(getD).filter(Boolean).sort();
+  if (!ds.length) return null;
+  const a = ds[0], b = ds[ds.length - 1];
+  return a === b ? fmtDate(a) : fmtDate(a) + " - " + fmtDate(b);
+}
+function subSummaryCell(board, task, oc) {
+  const subs = task.subitems || [];
+  const wrap = (kid) => h("div", { class: "cell sub-sum" }, kid);
+  if (oc.kind === "sys") {
+    if (oc.id === "status") return wrap(subLabelBar(subs, s => statusOf(s).color, s => statusOf(s).label || "Blank"));
+    if (oc.id === "priority") return wrap(subLabelBar(subs, s => prioOf(s).color, s => prioOf(s).label || "Blank"));
+    if (oc.id === "date") { const r = subDateRange(subs, s => s.due); return wrap(r ? h("span", { class: "sub-sum-date" }, r) : h("span", { class: "muted" }, "—")); }
+    if (oc.id === "owner") {
+      const ids = [...new Set(subs.flatMap(s => s.owners || []))].map(personById).filter(Boolean);
+      if (!ids.length) return wrap(h("span", { class: "muted" }, "—"));
+      const st = h("span", { class: "avatar-stack" }); ids.slice(0, 3).forEach(p => st.append(avatarEl(p, 22))); return wrap(st);
+    }
+    return null;   // "updated" etc → keep parent value
+  }
+  const col = oc.col;
+  if (LABEL_TYPES.includes(col.type)) return wrap(subLabelBar(subs,
+    s => { const lab = (col.labels || []).find(l => l.id === (s.cells ? s.cells[col.id] : undefined)); return lab ? lab.color : "#c4c4c4"; },
+    s => { const lab = (col.labels || []).find(l => l.id === (s.cells ? s.cells[col.id] : undefined)); return lab ? (lab.label || "Blank") : "Blank"; }));
+  if (col.type === "date") { const r = subDateRange(subs, s => s.cells && s.cells[col.id]); return wrap(r ? h("span", { class: "sub-sum-date" }, r) : h("span", { class: "muted" }, "—")); }
+  return null;   // text / number / connect / mirror / files → keep parent value
 }
 
 function subAddRowEl(board, parent, tpl) {

@@ -1133,6 +1133,10 @@ input, textarea, select {
 .sub-add-row .sub-add-input { width: 100%; height: 26px; border: none; background: transparent; outline: none; font-size: 13px; color: var(--text-2); }
 .sub-add-row .sub-add-input:focus { color: var(--text); }
 .board-ro .sub-caret { pointer-events: auto; }
+/* multi-level parent roll-up cells */
+.cell.sub-sum { padding: 0 8px; cursor: default; }
+.cell.sub-sum .mirror-bar { height: 20px; }
+.sub-sum-date { font-size: 12px; color: var(--text-2); background: var(--surface-2); border-radius: 999px; padding: 2px 10px; }
 
 /* kanban: drag-reorder columns */
 .kb-head { cursor: grab; }
