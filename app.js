@@ -1048,7 +1048,7 @@ function addTask(group, name, atTop = false) {
 }
 
 function duplicateTasks(ids) {
-  let n = 0;
+  const created = [];
   for (const id of ids) {
     const loc = locateTask(id);
     if (!loc) continue;
@@ -1060,12 +1060,18 @@ function duplicateTasks(ids) {
     touch(copy);
     loc.group.tasks.splice(loc.idx + 1, 0, copy);
     runWorkflows({ type: "created", task: copy });
-    n++;
+    created.push(copy.id);
   }
   ui.sel.clear();
   save();
   render();
-  toast(`${n} task${n > 1 ? "s" : ""} duplicated`);
+  const n = created.length;
+  toast(`${n} task${n > 1 ? "s" : ""} duplicated`, () => {
+    const set = new Set(created);
+    for (const b of state.boards) for (const g of b.groups) g.tasks = g.tasks.filter(t => !set.has(t.id));
+    save(); render();
+    toast(`Duplicate${n > 1 ? "s" : ""} undone`);
+  });
 }
 
 function deleteTasks(ids) {
