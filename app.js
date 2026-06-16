@@ -1867,6 +1867,12 @@ function ddItem(icon, label, onclick, cls = "") {
 
 function renderMain() {
   const main = q("#main");
+  // keep scroll position when re-rendering the SAME board+view (actions shouldn't
+  // jump back to the top); reset to top when switching board/view/home.
+  const _key = ui.home ? "home" : (() => { const b = getBoard(); return b ? b.id + ":" + b.view : "none"; })();
+  const sc = (renderMain._key === _key) ? main.scrollTop : 0;
+  renderMain._key = _key;
+  requestAnimationFrame(() => { main.scrollTop = sc; });
   main.replaceChildren();
   main.classList.remove("board-ro");
 
