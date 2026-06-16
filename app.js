@@ -4716,6 +4716,31 @@ function reorderStatus(dragId, targetId) {
 
 /* ---------------- Render: calendar view ---------------- */
 
+// every ISO date a task should appear on in the calendar: due date, date
+// columns, timeline ranges (each day), and the same from its sub-items.
+function taskDates(board, t) {
+  const out = new Set();
+  const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const addRange = (a, b) => {
+    if (!a && !b) return;
+    let d = new Date(a || b); const end = new Date(b || a);
+    let guard = 0;
+    while (d <= end && guard++ < 400) { out.add(isoOf(d)); d.setDate(d.getDate() + 1); }
+  };
+  const collect = (o) => {
+    if (o.due) out.add(o.due);
+    for (const c of (board.columns || [])) {
+      const v = o.cells && o.cells[c.id];
+      if (!v) continue;
+      if (c.type === "date") out.add(v);
+      else if (c.type === "timeline") addRange(v.start, v.end);
+    }
+  };
+  collect(t);
+  for (const si of (t.subitems || [])) collect(si);
+  return [...out];
+}
+
 function calendarViewEl(board) {
   const now = new Date();
   if (!ui.cal) ui.cal = { y: now.getFullYear(), m: now.getMonth() };
@@ -4735,13 +4760,16 @@ function calendarViewEl(board) {
   WEEKDAYS.forEach(w => gridHead.append(h("div", {}, w)));
   cal.append(gridHead);
 
-  // map tasks by date
+  // map tasks by date — includes due date, date columns, timeline ranges (every
+  // day in the span) and sub-item dates, so timelines show up on the calendar.
   const byDate = new Map();
   for (const g of board.groups) {
     for (const t of visibleTasks(g)) {
-      if (!t.due) continue;
-      if (!byDate.has(t.due)) byDate.set(t.due, []);
-      byDate.get(t.due).push(t);
+      for (const iso of taskDates(board, t)) {
+        if (!byDate.has(iso)) byDate.set(iso, []);
+        const arr = byDate.get(iso);
+        if (!arr.includes(t)) arr.push(t);
+      }
     }
   }
 
