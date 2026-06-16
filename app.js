@@ -3235,8 +3235,12 @@ function colTimelineCellEl(task, col) {
       // clicking opens the small calendar; on pick, reopen this timeline popover
       b.addEventListener("click", () => calendarPicker(b, {
         value: val || "",
-        onPick: (iso) => { const c = { ...(task.cells[col.id] || {}) }; c[key] = iso; setColVal(task, col, c); softRenderTable(getBoard()); open(); },
-        onClear: () => { const c = { ...(task.cells[col.id] || {}) }; c[key] = ""; setColVal(task, col, c); softRenderTable(getBoard()); open(); },
+        // keep the timeline popover open until BOTH start & end are set, then close
+        onPick: (iso) => {
+          const c = { ...(task.cells[col.id] || {}) }; c[key] = iso; setColVal(task, col, c);
+          if (c.start && c.end) { closeDropdowns(); softRenderTable(getBoard()); } else open();
+        },
+        onClear: () => { const c = { ...(task.cells[col.id] || {}) }; c[key] = ""; setColVal(task, col, c); open(); },
       }));
       return b;
     };
